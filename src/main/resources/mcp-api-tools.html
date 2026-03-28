@@ -96,6 +96,53 @@
             color: var(--muted);
         }
 
+        .mapping-panel {
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            background: #fbfdff;
+            padding: 16px;
+        }
+
+        .mapping-row {
+            display: grid;
+            grid-template-columns: 120px 140px 1fr 1fr 120px 140px 110px 90px;
+            gap: 10px;
+            align-items: end;
+            padding: 12px 0;
+            border-bottom: 1px solid #e7eef7;
+        }
+
+        .mapping-row:last-child {
+            border-bottom: none;
+        }
+
+        .mapping-row .field {
+            gap: 6px;
+        }
+
+        .mapping-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-top: 14px;
+            flex-wrap: wrap;
+        }
+
+        .mapping-preview {
+            margin-top: 12px;
+            min-height: 120px;
+            max-height: 220px;
+            overflow: auto;
+            padding: 14px;
+            border-radius: 16px;
+            background: #f4f8ff;
+            border: 1px solid var(--line);
+            font-family: Consolas, "Courier New", monospace;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
         .mini-nav {
             margin-top: 16px;
         }
@@ -108,6 +155,10 @@
             .tool-button-row button {
                 width: 100%;
             }
+
+            .mapping-row {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -118,9 +169,10 @@
             <h1>工具接入</h1>
             <p>这个页面用于维护 MCP 工具注册、HTTP 协议配置和映射信息，下方直接展示已注册工具列表。</p>
             <div class="nav-links mini-nav">
-                <a class="nav-button secondary" href="./mcp-api-test-mock.html">返回首页</a>
+                <a class="nav-button secondary" href="./mcp-api-gateway.html">返回首页</a>
                 <a class="nav-button secondary" href="./mcp-api-connection.html">连接调试</a>
                 <a class="nav-button secondary" href="./mcp-api-gateway.html">网关管理</a>
+                <a class="nav-button secondary" href="./mcp-api-tools.html">工具管理</a>
                 <a class="nav-button secondary" href="./mcp-api-ai-chat.html">AI 聊天</a>
             </div>
         </div>
@@ -162,28 +214,15 @@
                 <textarea id="http-headers" class="small-textarea">{}</textarea>
             </div>
             <div class="field full">
-                <label for="mapping-body">字段映射(JSON数组):</label>
-                <textarea id="mapping-body">[
-  {
-    "mappingType": "request",
-    "fieldName": "city",
-    "mcpPath": "xxxRequest01.city",
-    "mcpType": "string",
-    "mcpDesc": "城市",
-    "isRequired": 1,
-    "sortOrder": 1
-  },
-  {
-    "mappingType": "request",
-    "parentPath": "xxxRequest01.company",
-    "fieldName": "name",
-    "mcpPath": "xxxRequest01.company.name",
-    "mcpType": "string",
-    "mcpDesc": "公司名称",
-    "isRequired": 1,
-    "sortOrder": 2
-  }
-]</textarea>
+                <label>字段映射:</label>
+                <div class="mapping-panel">
+                    <div id="mapping-list"></div>
+                    <div class="mapping-actions">
+                        <button id="add-mapping-btn" class="secondary" type="button">新增映射字段</button>
+                        <span class="hint">按行填写字段即可，页面会自动转换成后端所需的 mappings 数组。</span>
+                    </div>
+                    <div id="mapping-preview" class="mapping-preview"></div>
+                </div>
             </div>
         </div>
 
@@ -249,10 +288,129 @@
 <script>
     const common = window.McpApiCommon;
     const logId = "log-box";
+    const defaultMappings = [
+        {
+            mappingType: "request",
+            parentPath: "",
+            fieldName: "city",
+            mcpPath: "xxxRequest01.city",
+            mcpType: "string",
+            mcpDesc: "城市",
+            isRequired: 1,
+            sortOrder: 1
+        },
+        {
+            mappingType: "request",
+            parentPath: "xxxRequest01.company",
+            fieldName: "name",
+            mcpPath: "xxxRequest01.company.name",
+            mcpType: "string",
+            mcpDesc: "公司名称",
+            isRequired: 1,
+            sortOrder: 2
+        }
+    ];
 
-    function parseJsonArray(text) {
-        const data = common.parseJsonSafe(text);
-        return Array.isArray(data) ? data : [];
+    function getMappingRows() {
+        return Array.from(document.querySelectorAll(".mapping-row"));
+    }
+
+    function syncMappingSortOrders() {
+        getMappingRows().forEach((row, index) => {
+            row.querySelector('[data-key="sortOrder"]').value = index + 1;
+        });
+    }
+
+    function collectMappings() {
+        syncMappingSortOrders();
+        return getMappingRows().map((row, index) => ({
+            mappingType: row.querySelector('[data-key="mappingType"]').value,
+            parentPath: row.querySelector('[data-key="parentPath"]').value.trim(),
+            fieldName: row.querySelector('[data-key="fieldName"]').value.trim(),
+            mcpPath: row.querySelector('[data-key="mcpPath"]').value.trim(),
+            mcpType: row.querySelector('[data-key="mcpType"]').value.trim(),
+            mcpDesc: row.querySelector('[data-key="mcpDesc"]').value.trim(),
+            isRequired: Number(row.querySelector('[data-key="isRequired"]').value || 0),
+            sortOrder: index + 1
+        })).filter((item) => item.fieldName || item.mcpPath);
+    }
+
+    function renderMappingPreview() {
+        document.getElementById("mapping-preview").textContent = JSON.stringify(collectMappings(), null, 2);
+    }
+
+    function buildMappingRow(mapping) {
+        return `
+            <div class="mapping-row">
+                <div class="field">
+                    <label>映射类型</label>
+                    <select data-key="mappingType">
+                        <option value="request" ${mapping.mappingType === "request" ? "selected" : ""}>request</option>
+                        <option value="response" ${mapping.mappingType === "response" ? "selected" : ""}>response</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>父路径</label>
+                    <input data-key="parentPath" type="text" value="${mapping.parentPath || ""}" placeholder="可选">
+                </div>
+                <div class="field">
+                    <label>字段名</label>
+                    <input data-key="fieldName" type="text" value="${mapping.fieldName || ""}" placeholder="如 city">
+                </div>
+                <div class="field">
+                    <label>MCP 路径</label>
+                    <input data-key="mcpPath" type="text" value="${mapping.mcpPath || ""}" placeholder="如 xxxRequest01.city">
+                </div>
+                <div class="field">
+                    <label>字段类型</label>
+                    <select data-key="mcpType">
+                        <option value="string" ${(mapping.mcpType || "string") === "string" ? "selected" : ""}>string</option>
+                        <option value="number" ${mapping.mcpType === "number" ? "selected" : ""}>number</option>
+                        <option value="integer" ${mapping.mcpType === "integer" ? "selected" : ""}>integer</option>
+                        <option value="boolean" ${mapping.mcpType === "boolean" ? "selected" : ""}>boolean</option>
+                        <option value="object" ${mapping.mcpType === "object" ? "selected" : ""}>object</option>
+                        <option value="array" ${mapping.mcpType === "array" ? "selected" : ""}>array</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>字段说明</label>
+                    <input data-key="mcpDesc" type="text" value="${mapping.mcpDesc || ""}" placeholder="如 城市">
+                </div>
+                <div class="field">
+                    <label>必填</label>
+                    <select data-key="isRequired">
+                        <option value="1" ${Number(mapping.isRequired) === 1 ? "selected" : ""}>是</option>
+                        <option value="0" ${Number(mapping.isRequired) !== 1 ? "selected" : ""}>否</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>排序</label>
+                    <input data-key="sortOrder" type="number" value="${mapping.sortOrder || 1}" readonly>
+                </div>
+                <div class="field" style="grid-column: 1 / -1;">
+                    <button class="warn remove-mapping-btn" type="button">删除这一行</button>
+                </div>
+            </div>
+        `;
+    }
+
+    function appendMappingRow(mapping) {
+        const list = document.getElementById("mapping-list");
+        const wrapper = document.createElement("div");
+        wrapper.innerHTML = buildMappingRow(mapping);
+        const row = wrapper.firstElementChild;
+        row.querySelectorAll("input, select").forEach((element) => {
+            element.addEventListener("input", renderMappingPreview);
+            element.addEventListener("change", renderMappingPreview);
+        });
+        row.querySelector(".remove-mapping-btn").addEventListener("click", () => {
+            row.remove();
+            syncMappingSortOrders();
+            renderMappingPreview();
+        });
+        list.appendChild(row);
+        syncMappingSortOrders();
+        renderMappingPreview();
     }
 
     function normalizeTools(payload) {
@@ -317,12 +475,45 @@
         return result;
     }
 
+    async function verifyHttpEndpoint(base) {
+        const httpUrl = document.getElementById("http-url").value.trim();
+        if (!httpUrl) {
+            common.logTo(logId, "HTTP 地址为空，无法校验");
+            return false;
+        }
+
+        const result = await callJson(
+            common.buildUrl("/custom-mcp/tool/http/check", { api_key: base.apiKey }),
+            "POST",
+            { httpUrl }
+        );
+
+        if (!result.ok || !result.data?.reachable) {
+            common.logTo(logId, "HTTP 地址校验失败，已阻止新增工具", result.data || result.text);
+            window.alert("HTTP 地址不可达，不能新增工具");
+            return false;
+        }
+
+        common.logTo(logId, "HTTP 地址校验通过", result.data);
+        return true;
+    }
+
     function toolRegisterPayload() {
         const base = common.ensureApiKey(logId);
         return {
             gatewayId: base.gatewayId,
             toolName: document.getElementById("tool-name").value,
-            toolDesc: document.getElementById("tool-desc").value
+            toolType: "http",
+            toolDescription: document.getElementById("tool-desc").value,
+            toolVersion: "1.0.0",
+            protocolType: document.getElementById("protocol-type").value,
+            httpUrl: document.getElementById("http-url").value,
+            httpMethod: document.getElementById("http-method").value,
+            httpHeaders: document.getElementById("http-headers").value,
+            timeout: 30000,
+            retryTimes: 0,
+            status: 1,
+            mappings: collectMappings()
         };
     }
 
@@ -337,13 +528,17 @@
             httpUrl: document.getElementById("http-url").value,
             httpMethod: document.getElementById("http-method").value,
             httpHeaders: common.parseJsonSafe(document.getElementById("http-headers").value) || {},
-            mappings: parseJsonArray(document.getElementById("mapping-body").value)
+            mappings: collectMappings()
         };
     }
 
     document.getElementById("register-tool-btn").addEventListener("click", async () => {
         const base = common.ensureApiKey(logId);
         if (!base) {
+            return;
+        }
+        const reachable = await verifyHttpEndpoint(base);
+        if (!reachable) {
             return;
         }
         const result = await callJson(common.buildUrl("/custom-mcp/tool/register", { api_key: base.apiKey }), "POST", toolRegisterPayload());
@@ -369,7 +564,21 @@
         document.getElementById(logId).textContent = "";
     });
 
+    document.getElementById("add-mapping-btn").addEventListener("click", () => {
+        appendMappingRow({
+            mappingType: "request",
+            parentPath: "",
+            fieldName: "",
+            mcpPath: "",
+            mcpType: "string",
+            mcpDesc: "",
+            isRequired: 1,
+            sortOrder: getMappingRows().length + 1
+        });
+    });
+
     common.initBaseFields();
+    defaultMappings.forEach(appendMappingRow);
     renderRegisteredTools(common.getStoredTools());
 </script>
 </body>

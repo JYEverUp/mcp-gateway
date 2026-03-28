@@ -13,10 +13,11 @@
             <h1>MCP AI 聊天联调</h1>
             <p>这个页面只保留工具拉取和 chat-with-tools 联调，方便快速验证大模型与工具路由是否打通。</p>
             <div class="nav-links">
-                <a class="nav-button secondary" href="./mcp-api-test-mock.html">返回首页</a>
+                <a class="nav-button secondary" href="./mcp-api-gateway.html">返回首页</a>
                 <a class="nav-button secondary" href="./mcp-api-connection.html">连接调试</a>
                 <a class="nav-button secondary" href="./mcp-api-gateway.html">网关管理</a>
                 <a class="nav-button secondary" href="./mcp-api-tools.html">工具管理</a>
+                <a class="nav-button secondary" href="./mcp-api-ai-chat.html">AI 聊天</a>
             </div>
         </div>
     </div>
@@ -32,16 +33,16 @@
             <div class="field-grid">
                 <div class="field">
                     <label for="ai-base-url">AI Base URL</label>
-                    <input id="ai-base-url" type="text" value="https://api.openai.com/v1">
+                    <input id="ai-base-url" type="text" value="https://dashscope.aliyuncs.com/compatible-mode/v1">
                 </div>
                 <div class="field">
                     <label for="ai-model">模型</label>
-                    <input id="ai-model" type="text" value="gpt-4o-mini">
+                    <input id="ai-model" type="text" value="qwen-plus">
                 </div>
             </div>
             <div class="field" style="margin-top: 14px;">
                 <label for="ai-api-key">AI API Key</label>
-                <input id="ai-api-key" type="text" placeholder="按需填写">
+                <input id="ai-api-key" type="text" value="sk-8cb13d42886042d18af5734bce991e86" placeholder="按需填写">
             </div>
         </section>
 
@@ -53,7 +54,10 @@
             </div>
             <div class="field" style="margin-top: 14px;">
                 <label for="user-question">用户问题</label>
-                <textarea id="user-question" class="small-textarea">帮我查询一下 jd 在 beijing 的公司雇员信息。</textarea>
+                <textarea id="user-question" class="small-textarea">获取公司雇员信息，信息如下；
+城市；北京
+公司；谷歌
+雇员；小郭</textarea>
             </div>
             <div class="button-row" style="margin-top: 16px;">
                 <button id="load-tools-btn" class="secondary">拉取工具</button>

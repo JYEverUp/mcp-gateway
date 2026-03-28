@@ -351,6 +351,10 @@ public class McpGatewayController implements IMcpGatewayService {
         try {
             log.info("registerTool invoked, request={}", writeValue(request));
             validateToolRegisterRequest(request);
+            Map<String, Object> httpProbe = probeHttpEndpoint(request.getHttpUrl());
+            if (!(Boolean) httpProbe.get("reachable")) {
+                throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "HTTP 地址不可达，不能新增工具");
+            }
 
             long toolId = nextId();
             McpToolConfigVO saved = sessionRepository.saveMcpToolConfig(new McpToolConfigVO(
@@ -380,6 +384,25 @@ public class McpGatewayController implements IMcpGatewayService {
             return ResponseEntity.badRequest().body(Response.error(e.getCode(), e.getInfo()));
         } catch (Exception e) {
             log.error("registerTool failed, request={}", writeValue(request), e);
+            return ResponseEntity.internalServerError().body(Response.error(ResponseCode.UN_ERROR.getCode(), e.getMessage()));
+        }
+    }
+
+    @PostMapping(value = "custom-mcp/tool/http/check", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> checkToolHttp(@RequestBody ToolHttpCheckRequest request) {
+        try {
+            log.info("checkToolHttp invoked, request={}", writeValue(request));
+            if (request == null || isBlank(request.getHttpUrl())) {
+                throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "httpUrl 不能为空");
+            }
+            Map<String, Object> result = probeHttpEndpoint(request.getHttpUrl());
+            log.info("checkToolHttp completed, result={}", result);
+            return ResponseEntity.ok(result);
+        } catch (AppException e) {
+            log.warn("checkToolHttp validation failed, request={}", writeValue(request), e);
+            return ResponseEntity.badRequest().body(Response.error(e.getCode(), e.getInfo()));
+        } catch (Exception e) {
+            log.error("checkToolHttp failed, request={}", writeValue(request), e);
             return ResponseEntity.internalServerError().body(Response.error(ResponseCode.UN_ERROR.getCode(), e.getMessage()));
         }
     }
@@ -565,6 +588,32 @@ public class McpGatewayController implements IMcpGatewayService {
     private McpSchemaVO.JSONRPCResponse processMessageForResult(String gatewayId, String sessionId, String apiKey, String messageBody) throws Exception {
         HandleMessageCommandEntity commandEntity = new HandleMessageCommandEntity(gatewayId, apiKey, sessionId, messageBody);
         return sessionMessageService.processHandlerMessage(commandEntity);
+    }
+
+    private Map<String, Object> probeHttpEndpoint(String httpUrl) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("httpUrl", httpUrl);
+        result.put("reachable", false);
+
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(httpUrl))
+                    .timeout(Duration.ofSeconds(5))
+                    .method("HEAD", HttpRequest.BodyPublishers.noBody())
+                    .build();
+
+            HttpResponse<Void> response = httpClient.send(request, HttpResponse.BodyHandlers.discarding());
+            int statusCode = response.statusCode();
+            boolean reachable = statusCode != 404 && statusCode != 410;
+            result.put("reachable", reachable);
+            result.put("statusCode", statusCode);
+            result.put("checkedMethod", "HEAD");
+            return result;
+        } catch (Exception e) {
+            log.warn("probeHttpEndpoint failed, httpUrl={}", httpUrl, e);
+            result.put("message", e.getMessage());
+            return result;
+        }
     }
 
     private String buildJsonRpcRequest(String method, Map<String, Object> params) throws IOException {
@@ -818,6 +867,13 @@ public class McpGatewayController implements IMcpGatewayService {
         public void setIsRequired(Integer isRequired) { this.isRequired = isRequired; }
         public Integer getSortOrder() { return sortOrder; }
         public void setSortOrder(Integer sortOrder) { this.sortOrder = sortOrder; }
+    }
+
+    public static class ToolHttpCheckRequest {
+        private String httpUrl;
+
+        public String getHttpUrl() { return httpUrl; }
+        public void setHttpUrl(String httpUrl) { this.httpUrl = httpUrl; }
     }
 
     public static class GatewayRegisterRequest {
