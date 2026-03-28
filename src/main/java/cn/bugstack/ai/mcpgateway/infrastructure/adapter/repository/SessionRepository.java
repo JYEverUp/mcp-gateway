@@ -12,6 +12,8 @@ import cn.bugstack.ai.mcpgateway.infrastructure.dao.po.McpGatewayPO;
 import cn.bugstack.ai.mcpgateway.infrastructure.dao.po.McpGatewayToolPO;
 import cn.bugstack.ai.mcpgateway.infrastructure.dao.po.McpProtocolHttpPO;
 import cn.bugstack.ai.mcpgateway.infrastructure.dao.po.McpProtocolMappingPO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +24,8 @@ import java.util.Map;
 
 @Repository
 public class SessionRepository implements ISessionRepository {
+
+    private static final Logger log = LoggerFactory.getLogger(SessionRepository.class);
 
     private final IMcpGatewayDao mcpGatewayDao;
     private final IMcpGatewayToolDao mcpGatewayToolDao;
@@ -41,15 +45,20 @@ public class SessionRepository implements ISessionRepository {
 
     @Override
     public McpGatewayConfigVO queryMcpGatewayConfigByGatewayId(String gatewayId) {
+        log.info("query gateway config start, gatewayId={}", gatewayId);
         McpGatewayPO po = mcpGatewayDao.queryMcpGatewayByGatewayId(gatewayId);
         if (po == null) {
+            log.info("query gateway config miss, gatewayId={}", gatewayId);
             return null;
         }
-        return new McpGatewayConfigVO(po.getGatewayId(), po.getGatewayName(), po.getGatewayDesc(), po.getVersion());
+        McpGatewayConfigVO result = new McpGatewayConfigVO(po.getGatewayId(), po.getGatewayName(), po.getGatewayDesc(), po.getVersion());
+        log.info("query gateway config success, gatewayId={}, gatewayName={}", gatewayId, po.getGatewayName());
+        return result;
     }
 
     @Override
     public List<McpToolConfigVO> queryMcpGatewayToolConfigListByGatewayId(String gatewayId) {
+        log.info("query gateway tools start, gatewayId={}", gatewayId);
         List<McpToolConfigVO> result = new ArrayList<>();
         List<McpGatewayToolPO> toolPOList = mcpGatewayToolDao.queryEffectiveTools(gatewayId);
         for (McpGatewayToolPO toolPO : toolPOList) {
@@ -85,36 +94,44 @@ public class SessionRepository implements ISessionRepository {
                     toolPO.getToolVersion(),
                     new McpToolProtocolConfigVO(httpConfig, requestMappings)));
         }
+        log.info("query gateway tools completed, gatewayId={}, toolCount={}", gatewayId, result.size());
         return result;
     }
 
     @Override
     public McpToolProtocolConfigVO queryMcpGatewayProtocolConfig(String gatewayId, String toolName) {
+        log.info("query tool protocol start, gatewayId={}, toolName={}", gatewayId, toolName);
         McpGatewayToolPO req = new McpGatewayToolPO();
         req.setGatewayId(gatewayId);
         req.setToolName(toolName);
         Long protocolId = mcpGatewayToolDao.queryToolProtocolIdByToolName(req);
         if (protocolId == null) {
+            log.info("query tool protocol miss, gatewayId={}, toolName={}", gatewayId, toolName);
             return null;
         }
 
         McpProtocolHttpPO httpPO = mcpProtocolHttpDao.queryMcpProtocolHttpByProtocolId(protocolId);
         if (httpPO == null) {
+            log.info("query tool protocol http config miss, protocolId={}", protocolId);
             return null;
         }
 
-        return new McpToolProtocolConfigVO(
+        McpToolProtocolConfigVO result = new McpToolProtocolConfigVO(
                 new McpToolProtocolConfigVO.HTTPConfig(
                         httpPO.getHttpUrl(),
                         httpPO.getHttpHeaders(),
                         httpPO.getHttpMethod(),
                         httpPO.getTimeout()),
                 null);
+        log.info("query tool protocol success, gatewayId={}, toolName={}, protocolId={}", gatewayId, toolName, protocolId);
+        return result;
     }
 
     @Override
     @Transactional
     public McpToolConfigVO saveMcpToolConfig(McpToolConfigVO toolConfigVO) {
+        log.info("save tool config start, gatewayId={}, toolId={}, toolName={}",
+                toolConfigVO.getGatewayId(), toolConfigVO.getToolId(), toolConfigVO.getToolName());
         ensureGatewayExists(toolConfigVO.getGatewayId());
 
         long protocolId = toolConfigVO.getToolId();
@@ -155,11 +172,16 @@ public class SessionRepository implements ISessionRepository {
         toolPO.setProtocolType("http");
         mcpGatewayToolDao.insert(toolPO);
 
+        log.info("save tool config completed, gatewayId={}, toolId={}, mappingCount={}",
+                toolConfigVO.getGatewayId(),
+                toolConfigVO.getToolId(),
+                protocolConfig.getRequestProtocolMappings() == null ? 0 : protocolConfig.getRequestProtocolMappings().size());
         return toolConfigVO;
     }
 
     @Override
     public List<Map<String, Object>> queryToolDetailsByGatewayId(String gatewayId) {
+        log.info("query tool details start, gatewayId={}", gatewayId);
         List<Map<String, Object>> result = new ArrayList<>();
         for (McpToolConfigVO tool : queryMcpGatewayToolConfigListByGatewayId(gatewayId)) {
             Map<String, Object> item = new LinkedHashMap<>();
@@ -172,11 +194,13 @@ public class SessionRepository implements ISessionRepository {
             item.put("mappings", tool.getMcpToolProtocolConfigVO().getRequestProtocolMappings());
             result.add(item);
         }
+        log.info("query tool details completed, gatewayId={}, toolCount={}", gatewayId, result.size());
         return result;
     }
 
     private void ensureGatewayExists(String gatewayId) {
         if (mcpGatewayDao.queryMcpGatewayByGatewayId(gatewayId) != null) {
+            log.info("gateway already exists, gatewayId={}", gatewayId);
             return;
         }
 
@@ -188,6 +212,7 @@ public class SessionRepository implements ISessionRepository {
         gatewayPO.setAuth(0);
         gatewayPO.setStatus(1);
         mcpGatewayDao.insert(gatewayPO);
+        log.info("gateway auto-created for tool registration, gatewayId={}", gatewayId);
     }
 
 }

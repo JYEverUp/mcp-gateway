@@ -7,6 +7,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -16,12 +18,16 @@ import java.util.Map;
 @RequestMapping("/mock/tools")
 public class MockToolController {
 
+    private static final Logger log = LoggerFactory.getLogger(MockToolController.class);
+
     @PostMapping("/echo")
     public Map<String, Object> echo(@RequestBody Map<String, Object> payload) {
+        log.info("mock echo invoked, payload={}", payload);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("tool", "echo_payload");
         result.put("received", payload);
         result.put("timestamp", Instant.now().toString());
+        log.info("mock echo completed, result={}", result);
         return result;
     }
 
@@ -29,6 +35,7 @@ public class MockToolController {
     public Map<String, Object> profile(
             @PathVariable("userId") String userId,
             @RequestParam(value = "verbose", defaultValue = "false") boolean verbose) {
+        log.info("mock profile invoked, userId={}, verbose={}", userId, verbose);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("tool", "fetch_profile");
         result.put("userId", userId);
@@ -38,6 +45,7 @@ public class MockToolController {
         if (verbose) {
             result.put("tags", new String[]{"mcp", "gateway", "demo"});
         }
+        log.info("mock profile completed, result={}", result);
         return result;
     }
 

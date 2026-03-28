@@ -26,6 +26,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.codec.ServerSentEvent;
@@ -61,6 +63,8 @@ import java.util.UUID;
 @CrossOrigin(origins = "*", allowedHeaders = "*", methods = {
         RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE, RequestMethod.OPTIONS})
 public class McpGatewayController implements IMcpGatewayService {
+
+    private static final Logger log = LoggerFactory.getLogger(McpGatewayController.class);
 
     private final IMcpSessionService mcpSessionService;
     private final IMcpMessageService mcpMessageService;
@@ -100,6 +104,7 @@ public class McpGatewayController implements IMcpGatewayService {
     public Flux<ServerSentEvent<String>> handleSseConnection(
             @PathVariable("gatewayId") String gatewayId,
             @RequestParam(value = "api_key", required = false) String apiKey) {
+        log.info("handleSseConnection invoked, gatewayId={}, apiKeyPresent={}", gatewayId, !isBlank(apiKey));
         validateGatewayId(gatewayId);
         return mcpSessionService.createMcpSession(gatewayId, apiKey);
     }
@@ -108,6 +113,7 @@ public class McpGatewayController implements IMcpGatewayService {
     public Flux<ServerSentEvent<String>> handleCustomSseConnection(
             @RequestParam("gatewayId") String gatewayId,
             @RequestParam(value = "api_key", required = false) String apiKey) {
+        log.info("handleCustomSseConnection invoked, gatewayId={}, apiKeyPresent={}", gatewayId, !isBlank(apiKey));
         return handleSseConnection(gatewayId, apiKey);
     }
 
@@ -118,6 +124,8 @@ public class McpGatewayController implements IMcpGatewayService {
             @RequestParam(value = "api_key", required = false) String apiKey,
             @RequestBody String messageBody) {
         try {
+            log.info("handleMessage invoked, gatewayId={}, sessionId={}, apiKeyPresent={}, body={}",
+                    gatewayId, sessionId, !isBlank(apiKey), messageBody);
             validateGatewayId(gatewayId);
             if (sessionId == null || sessionId.isBlank()) {
                 throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "sessionId 不能为空");
@@ -126,6 +134,7 @@ public class McpGatewayController implements IMcpGatewayService {
             HandleMessageCommandEntity commandEntity = new HandleMessageCommandEntity(gatewayId, apiKey, sessionId, messageBody);
             return Mono.just(mcpMessageService.handleMessage(commandEntity));
         } catch (Exception e) {
+            log.error("handleMessage failed, gatewayId={}, sessionId={}", gatewayId, sessionId, e);
             return Mono.just(ResponseEntity.internalServerError().build());
         }
     }
@@ -136,6 +145,7 @@ public class McpGatewayController implements IMcpGatewayService {
             @RequestParam("sessionId") String sessionId,
             @RequestParam(value = "api_key", required = false) String apiKey,
             @RequestBody String messageBody) {
+        log.info("handleCustomMessage invoked, gatewayId={}, sessionId={}", gatewayId, sessionId);
         return handleMessage(gatewayId, sessionId, apiKey, messageBody);
     }
 
@@ -145,12 +155,14 @@ public class McpGatewayController implements IMcpGatewayService {
             @RequestParam("sessionId") String sessionId,
             @RequestParam(value = "api_key", required = false) String apiKey,
             @RequestBody String messageBody) {
+        log.info("handleCustomMessageWithResult invoked, gatewayId={}, sessionId={}", gatewayId, sessionId);
         return debugHandleMessage(gatewayId, sessionId, apiKey, messageBody);
     }
 
     @PostMapping(value = "custom-mcp/gateway/register", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> registerGateway(@RequestBody GatewayRegisterRequest request) {
         try {
+            log.info("registerGateway invoked, request={}", writeValue(request));
             validateGatewayRegisterRequest(request);
             GatewayConfigCommandEntity commandEntity = new GatewayConfigCommandEntity();
             commandEntity.setGatewayConfigVO(new GatewayConfigVO(
@@ -161,13 +173,17 @@ public class McpGatewayController implements IMcpGatewayService {
                     request.getAuth() == null ? GatewayEnum.GatewayAuthStatusEnum.ENABLE : GatewayEnum.GatewayAuthStatusEnum.getByCode(request.getAuth()),
                     request.getStatus() == null ? GatewayEnum.GatewayStatus.NOT_VERIFIED : GatewayEnum.GatewayStatus.get(request.getStatus())));
             gatewayConfigService.saveGatewayConfig(commandEntity);
-            return ResponseEntity.ok(Map.of(
+            Map<String, Object> result = Map.of(
                     "gatewayId", request.getGatewayId(),
                     "gatewayName", request.getGatewayName(),
-                    "status", "CREATED"));
+                    "status", "CREATED");
+            log.info("registerGateway completed, result={}", result);
+            return ResponseEntity.ok(result);
         } catch (AppException e) {
+            log.warn("registerGateway validation failed, request={}", writeValue(request), e);
             return ResponseEntity.badRequest().body(Response.error(e.getCode(), e.getInfo()));
         } catch (Exception e) {
+            log.error("registerGateway failed, request={}", writeValue(request), e);
             return ResponseEntity.internalServerError().body(Response.error(ResponseCode.UN_ERROR.getCode(), e.getMessage()));
         }
     }
@@ -175,6 +191,7 @@ public class McpGatewayController implements IMcpGatewayService {
     @PostMapping(value = "custom-mcp/gateway/auth/update", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> updateGatewayAuth(@RequestBody GatewayAuthUpdateRequest request) {
         try {
+            log.info("updateGatewayAuth invoked, request={}", writeValue(request));
             if (request == null || isBlank(request.getGatewayId()) || request.getAuth() == null) {
                 throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "gatewayId、auth 不能为空");
             }
@@ -182,13 +199,17 @@ public class McpGatewayController implements IMcpGatewayService {
                     GatewayConfigCommandEntity.buildUpdateGatewayAuthStatusVO(
                             request.getGatewayId(),
                             GatewayEnum.GatewayAuthStatusEnum.getByCode(request.getAuth())));
-            return ResponseEntity.ok(Map.of(
+            Map<String, Object> result = Map.of(
                     "gatewayId", request.getGatewayId(),
                     "auth", request.getAuth(),
-                    "updated", true));
+                    "updated", true);
+            log.info("updateGatewayAuth completed, result={}", result);
+            return ResponseEntity.ok(result);
         } catch (AppException e) {
+            log.warn("updateGatewayAuth validation failed, request={}", writeValue(request), e);
             return ResponseEntity.badRequest().body(Response.error(e.getCode(), e.getInfo()));
         } catch (Exception e) {
+            log.error("updateGatewayAuth failed, request={}", writeValue(request), e);
             return ResponseEntity.internalServerError().body(Response.error(ResponseCode.UN_ERROR.getCode(), e.getMessage()));
         }
     }
@@ -196,15 +217,20 @@ public class McpGatewayController implements IMcpGatewayService {
     @GetMapping(value = "custom-mcp/gateway/detail", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> queryGatewayDetail(@RequestParam("gatewayId") String gatewayId) {
         try {
+            log.info("queryGatewayDetail invoked, gatewayId={}", gatewayId);
             validateGatewayId(gatewayId);
             var gateway = mcpGatewayDao.queryMcpGatewayByGatewayId(gatewayId);
             if (gateway == null) {
+                log.info("queryGatewayDetail miss, gatewayId={}", gatewayId);
                 return ResponseEntity.notFound().build();
             }
+            log.info("queryGatewayDetail completed, gatewayId={}, result={}", gatewayId, gateway);
             return ResponseEntity.ok(gateway);
         } catch (AppException e) {
+            log.warn("queryGatewayDetail validation failed, gatewayId={}", gatewayId, e);
             return ResponseEntity.badRequest().body(Response.error(e.getCode(), e.getInfo()));
         } catch (Exception e) {
+            log.error("queryGatewayDetail failed, gatewayId={}", gatewayId, e);
             return ResponseEntity.internalServerError().body(Response.error(ResponseCode.UN_ERROR.getCode(), e.getMessage()));
         }
     }
@@ -212,8 +238,12 @@ public class McpGatewayController implements IMcpGatewayService {
     @GetMapping(value = "custom-mcp/gateway/list", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> queryGatewayList() {
         try {
-            return ResponseEntity.ok(mcpGatewayDao.queryAll());
+            log.info("queryGatewayList invoked");
+            List<?> result = mcpGatewayDao.queryAll();
+            log.info("queryGatewayList completed, count={}", result.size());
+            return ResponseEntity.ok(result);
         } catch (Exception e) {
+            log.error("queryGatewayList failed", e);
             return ResponseEntity.internalServerError().body(Response.error(ResponseCode.UN_ERROR.getCode(), e.getMessage()));
         }
     }
@@ -225,6 +255,8 @@ public class McpGatewayController implements IMcpGatewayService {
             @RequestParam(value = "api_key", required = false) String apiKey,
             @RequestBody Map<String, Object> requestBody) {
         try {
+            log.info("chatWithTools invoked, gatewayId={}, sessionId={}, apiKeyPresent={}, request={}",
+                    gatewayId, sessionId, !isBlank(apiKey), requestBody);
             validateGatewayId(gatewayId);
             if (sessionId == null || sessionId.isBlank()) {
                 return ResponseEntity.badRequest().body(Response.error(ResponseCode.ILLEGAL_PARAMETER.getCode(), "sessionId 不能为空"));
@@ -305,8 +337,11 @@ public class McpGatewayController implements IMcpGatewayService {
             if (!toolCalls.isEmpty()) {
                 result.put("finalModelResponse", finalAiResponse);
             }
+            log.info("chatWithTools completed, gatewayId={}, sessionId={}, toolExecutions={}, answerLength={}",
+                    gatewayId, sessionId, toolExecutions.size(), finalMessage == null ? 0 : extractMessageText(finalMessage).length());
             return ResponseEntity.ok(result);
         } catch (Exception e) {
+            log.error("chatWithTools failed, gatewayId={}, sessionId={}", gatewayId, sessionId, e);
             return ResponseEntity.internalServerError().body(Response.error(ResponseCode.UN_ERROR.getCode(), e.getMessage()));
         }
     }
@@ -314,6 +349,7 @@ public class McpGatewayController implements IMcpGatewayService {
     @PostMapping(value = "custom-mcp/tool/register", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> registerTool(@RequestBody ToolRegisterRequest request) {
         try {
+            log.info("registerTool invoked, request={}", writeValue(request));
             validateToolRegisterRequest(request);
 
             long toolId = nextId();
@@ -337,10 +373,13 @@ public class McpGatewayController implements IMcpGatewayService {
             result.put("toolName", saved.getToolName());
             result.put("mappingCount", request.getMappings().size());
             result.put("status", "CREATED");
+            log.info("registerTool completed, result={}", result);
             return ResponseEntity.ok(result);
         } catch (AppException e) {
+            log.warn("registerTool validation failed, request={}", writeValue(request), e);
             return ResponseEntity.badRequest().body(Response.error(e.getCode(), e.getInfo()));
         } catch (Exception e) {
+            log.error("registerTool failed, request={}", writeValue(request), e);
             return ResponseEntity.internalServerError().body(Response.error(ResponseCode.UN_ERROR.getCode(), e.getMessage()));
         }
     }
@@ -348,6 +387,7 @@ public class McpGatewayController implements IMcpGatewayService {
     @PostMapping(value = "custom-mcp/tool/protocol/update", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> updateToolProtocol(@RequestBody ToolProtocolUpdateRequest request) {
         try {
+            log.info("updateToolProtocol invoked, request={}", writeValue(request));
             if (request == null || isBlank(request.getGatewayId()) || request.getProtocolId() == null || isBlank(request.getProtocolType())) {
                 throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "gatewayId、protocolId、protocolType 不能为空");
             }
@@ -362,15 +402,19 @@ public class McpGatewayController implements IMcpGatewayService {
                     request.getProtocolId(),
                     request.getProtocolType()));
             gatewayToolConfigService.updateGatewayToolProtocol(commandEntity);
-            return ResponseEntity.ok(Map.of(
+            Map<String, Object> result = Map.of(
                     "gatewayId", request.getGatewayId(),
                     "toolId", request.getToolId(),
                     "protocolId", request.getProtocolId(),
                     "protocolType", request.getProtocolType(),
-                    "updated", true));
+                    "updated", true);
+            log.info("updateToolProtocol completed, result={}", result);
+            return ResponseEntity.ok(result);
         } catch (AppException e) {
+            log.warn("updateToolProtocol validation failed, request={}", writeValue(request), e);
             return ResponseEntity.badRequest().body(Response.error(e.getCode(), e.getInfo()));
         } catch (Exception e) {
+            log.error("updateToolProtocol failed, request={}", writeValue(request), e);
             return ResponseEntity.internalServerError().body(Response.error(ResponseCode.UN_ERROR.getCode(), e.getMessage()));
         }
     }
@@ -378,11 +422,16 @@ public class McpGatewayController implements IMcpGatewayService {
     @GetMapping(value = "custom-mcp/tool/list", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> queryToolList(@RequestParam("gatewayId") String gatewayId) {
         try {
+            log.info("queryToolList invoked, gatewayId={}", gatewayId);
             validateGatewayId(gatewayId);
-            return ResponseEntity.ok(sessionRepository.queryToolDetailsByGatewayId(gatewayId));
+            List<Map<String, Object>> result = sessionRepository.queryToolDetailsByGatewayId(gatewayId);
+            log.info("queryToolList completed, gatewayId={}, count={}", gatewayId, result.size());
+            return ResponseEntity.ok(result);
         } catch (AppException e) {
+            log.warn("queryToolList validation failed, gatewayId={}", gatewayId, e);
             return ResponseEntity.badRequest().body(Response.error(e.getCode(), e.getInfo()));
         } catch (Exception e) {
+            log.error("queryToolList failed, gatewayId={}", gatewayId, e);
             return ResponseEntity.internalServerError().body(Response.error(ResponseCode.UN_ERROR.getCode(), e.getMessage()));
         }
     }
@@ -395,6 +444,7 @@ public class McpGatewayController implements IMcpGatewayService {
         result.put("protocol", "MCP over SSE");
         result.put("timestamp", Instant.now().toString());
         result.put("defaultGatewayId", "gateway_001");
+        log.info("debug health invoked, result={}", result);
         return ResponseEntity.ok(result);
     }
 
@@ -403,11 +453,15 @@ public class McpGatewayController implements IMcpGatewayService {
             @PathVariable("gatewayId") String gatewayId,
             @PathVariable("sessionId") String sessionId,
             @RequestParam(value = "api_key", required = false) String apiKey) {
+        log.info("getSessionInfo invoked, gatewayId={}, sessionId={}, apiKeyPresent={}", gatewayId, sessionId, !isBlank(apiKey));
         SessionConfigVO session = sessionManagementService.getSession(sessionId);
         if (session == null) {
+            log.info("getSessionInfo miss, gatewayId={}, sessionId={}", gatewayId, sessionId);
             return ResponseEntity.notFound().build();
         }
-        return ResponseEntity.ok(buildSessionPayload(gatewayId, session, apiKey));
+        Map<String, Object> result = buildSessionPayload(gatewayId, session, apiKey);
+        log.info("getSessionInfo completed, gatewayId={}, sessionId={}", gatewayId, sessionId);
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping(value = "custom-mcp/session", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -415,6 +469,7 @@ public class McpGatewayController implements IMcpGatewayService {
             @RequestParam("gatewayId") String gatewayId,
             @RequestParam("sessionId") String sessionId,
             @RequestParam(value = "api_key", required = false) String apiKey) {
+        log.info("getCustomSessionInfo invoked, gatewayId={}, sessionId={}", gatewayId, sessionId);
         return getSessionInfo(gatewayId, sessionId, apiKey);
     }
 
@@ -422,8 +477,10 @@ public class McpGatewayController implements IMcpGatewayService {
     public ResponseEntity<Map<String, Object>> disconnectSession(
             @PathVariable("gatewayId") String gatewayId,
             @PathVariable("sessionId") String sessionId) {
+        log.info("disconnectSession invoked, gatewayId={}, sessionId={}", gatewayId, sessionId);
         SessionConfigVO session = sessionManagementService.getSession(sessionId);
         if (session == null) {
+            log.info("disconnectSession miss, gatewayId={}, sessionId={}", gatewayId, sessionId);
             return ResponseEntity.notFound().build();
         }
 
@@ -433,6 +490,7 @@ public class McpGatewayController implements IMcpGatewayService {
         result.put("sessionId", sessionId);
         result.put("disconnected", true);
         result.put("timestamp", Instant.now().toString());
+        log.info("disconnectSession completed, gatewayId={}, sessionId={}", gatewayId, sessionId);
         return ResponseEntity.ok(result);
     }
 
@@ -440,6 +498,7 @@ public class McpGatewayController implements IMcpGatewayService {
     public ResponseEntity<Map<String, Object>> disconnectCustomSession(
             @RequestParam("gatewayId") String gatewayId,
             @RequestParam("sessionId") String sessionId) {
+        log.info("disconnectCustomSession invoked, gatewayId={}, sessionId={}", gatewayId, sessionId);
         return disconnectSession(gatewayId, sessionId);
     }
 
@@ -450,8 +509,11 @@ public class McpGatewayController implements IMcpGatewayService {
             @RequestParam(value = "api_key", required = false) String apiKey,
             @RequestBody String messageBody) {
         try {
+            log.info("debugHandleMessage invoked, gatewayId={}, sessionId={}, apiKeyPresent={}, body={}",
+                    gatewayId, sessionId, !isBlank(apiKey), messageBody);
             SessionConfigVO session = sessionManagementService.getSession(sessionId);
             if (session == null) {
+                log.info("debugHandleMessage miss, gatewayId={}, sessionId={}", gatewayId, sessionId);
                 return ResponseEntity.notFound().build();
             }
 
@@ -465,10 +527,14 @@ public class McpGatewayController implements IMcpGatewayService {
                     .event("message")
                     .data(objectMapper.writeValueAsString(response))
                     .build());
+            log.info("debugHandleMessage completed, gatewayId={}, sessionId={}, hasResponse={}",
+                    gatewayId, sessionId, response != null);
             return ResponseEntity.ok(response);
         } catch (AppException e) {
+            log.warn("debugHandleMessage validation failed, gatewayId={}, sessionId={}", gatewayId, sessionId, e);
             return ResponseEntity.badRequest().body(Response.error(e.getCode(), e.getInfo()));
         } catch (Exception e) {
+            log.error("debugHandleMessage failed, gatewayId={}, sessionId={}", gatewayId, sessionId, e);
             return ResponseEntity.internalServerError().body(Response.error(ResponseCode.UN_ERROR.getCode(), e.getMessage()));
         }
     }
@@ -673,6 +739,14 @@ public class McpGatewayController implements IMcpGatewayService {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private String writeValue(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (Exception e) {
+            return String.valueOf(value);
+        }
     }
 
     public static class ToolRegisterRequest {
