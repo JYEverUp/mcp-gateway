@@ -9,7 +9,7 @@
 <body>
 <div class="page">
     <div class="hero">
-        <div>
+        <div class="hero-copy">
             <h1>MCP 网关管理</h1>
             <p>这里集中处理网关注册、详情查询、列表查询和鉴权更新，便于单独验证管理接口，不和消息调试混在一起。</p>
             <div class="nav-links">
@@ -18,6 +18,13 @@
                 <a class="nav-button secondary" href="./mcp-api-gateway.html">网关管理</a>
                 <a class="nav-button secondary" href="./mcp-api-tools.html">工具管理</a>
                 <a class="nav-button secondary" href="./mcp-api-ai-chat.html">AI 聊天</a>
+            </div>
+        </div>
+        <div class="hero-guide">
+            <h3>项目说明书</h3>
+            <p>给读者和使用者的一页式介绍，快速看懂系统定位、演示路径和核心亮点。</p>
+            <div class="button-row">
+                <button id="open-guide-btn">查看说明</button>
             </div>
         </div>
     </div>
@@ -78,6 +85,59 @@
             <h2>操作日志</h2>
             <div id="log-box" class="log-box"></div>
         </section>
+    </div>
+</div>
+
+<div id="guide-modal" class="guide-modal">
+    <div class="guide-dialog">
+        <div class="guide-header">
+            <h2>系统说明书</h2>
+            <button id="close-guide-btn" class="secondary">关闭</button>
+        </div>
+        <div class="guide-content">
+            <div class="guide-grid">
+                <section class="guide-block">
+                    <h3>项目定位</h3>
+                    <p>这是一个面向 MCP 协议的 AI 网关演示系统，目标是把大模型、工具协议和网关治理能力整合到一套 Spring Boot 工程里。</p>
+                    <ol class="guide-list">
+                        <li>支持 MCP 会话建立、消息派发、工具列表、工具调用和资源查询。</li>
+                        <li>支持工具协议映射，把外部 HTTP 接口包装成 MCP 工具。</li>
+                        <li>支持 Spring AI 接入大模型，并结合工具完成问答与流式输出。</li>
+                        <li>支持 API Key 鉴权、基础限流、数据库配置管理和调试页面联调。</li>
+                    </ol>
+                </section>
+                <section class="guide-block">
+                    <h3>建议演示路径</h3>
+                    <p>如果你要做系统讲解或现场演示，推荐按下面这条路径走，信息量足够且不会太散。</p>
+                    <ol class="guide-list">
+                        <li>先在“连接调试”建立 SSE 会话，展示网关如何创建 Session。</li>
+                        <li>再到“工具管理”查看已注册工具，说明工具如何映射到外部协议。</li>
+                        <li>接着到“AI 聊天”选择数据库里的模型配置，发起流式问答。</li>
+                        <li>最后回到“网关管理”展示网关详情、鉴权和管理接口。</li>
+                    </ol>
+                </section>
+                <section class="guide-block">
+                    <h3>用户使用步骤</h3>
+                    <p>面向普通使用者时，可以把系统理解成“先拿钥匙，再连网关，再调工具，最后让 AI 组合工具回答问题”。</p>
+                    <ol class="guide-list">
+                        <li>输入有效的 API Key，系统会先做鉴权。</li>
+                        <li>进入“连接调试”，点击“建立连接”获取 `sessionId`。</li>
+                        <li>在“工具管理”确认当前网关挂载了哪些工具。</li>
+                        <li>在“AI 聊天”选择模型方案，输入问题，观察流式回答和工具调用日志。</li>
+                    </ol>
+                </section>
+                <section class="guide-block">
+                    <h3>核心亮点</h3>
+                    <p>如果是对外介绍系统能力，这几个点最值得强调。</p>
+                    <ol class="guide-list">
+                        <li>网关层和工具协议层拆分明确，不只是普通 CRUD 项目。</li>
+                        <li>模型配置放入数据库，页面只做选择，避免把密钥硬编码在前端。</li>
+                        <li>AI 问答链路已切到 Spring AI，并支持流式输出。</li>
+                        <li>系统已经具备 API Key 鉴权和第一版多维限流能力，具备一定治理属性。</li>
+                    </ol>
+                </section>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -149,6 +209,17 @@
     document.getElementById("detail-btn").addEventListener("click", gatewayDetail);
     document.getElementById("list-btn").addEventListener("click", gatewayList);
     document.getElementById("auth-btn").addEventListener("click", updateAuth);
+    document.getElementById("open-guide-btn").addEventListener("click", () => {
+        document.getElementById("guide-modal").classList.add("open");
+    });
+    document.getElementById("close-guide-btn").addEventListener("click", () => {
+        document.getElementById("guide-modal").classList.remove("open");
+    });
+    document.getElementById("guide-modal").addEventListener("click", (event) => {
+        if (event.target.id === "guide-modal") {
+            document.getElementById("guide-modal").classList.remove("open");
+        }
+    });
     document.getElementById("clear-log-btn").addEventListener("click", () => {
         document.getElementById(logId).textContent = "";
         document.getElementById("response-box").textContent = "";
