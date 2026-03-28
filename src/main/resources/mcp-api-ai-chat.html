@@ -61,7 +61,7 @@
             </div>
             <div class="button-row" style="margin-top: 16px;">
                 <button id="load-tools-btn" class="secondary">拉取工具</button>
-                <button id="ask-btn">发送问答</button>
+                <button id="ask-btn">流式问答</button>
                 <button id="clear-answer-btn" class="warn">清空结果</button>
             </div>
         </section>
@@ -143,7 +143,7 @@
         if (!base) {
             return;
         }
-        const url = common.buildUrl("/custom-mcp/chat-with-tools", {
+        const url = common.buildUrl("/custom-mcp/chat-with-tools/stream", {
             gatewayId: base.gatewayId,
             sessionId: base.sessionId,
             api_key: base.apiKey
@@ -156,16 +156,46 @@
             userQuestion: document.getElementById("user-question").value,
             enableMcpTools: true
         };
-        common.logTo(logId, "发送 AI 问答", body);
-        const result = await common.requestJson(url, {
+        const answerBox = document.getElementById("answer-box");
+        answerBox.textContent = "";
+        common.logTo(logId, "发送流式 AI 问答", body);
+        const result = await common.requestEventStream(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body)
+        }, {
+            onEvent: (event) => {
+                if (event.event === "answer") {
+                    answerBox.textContent += event.data;
+                    answerBox.scrollTop = answerBox.scrollHeight;
+                    return;
+                }
+
+                if (event.event === "status") {
+                    common.logTo(logId, "流式状态", event.data);
+                    return;
+                }
+
+                if (event.event === "done") {
+                    const meta = common.parseJsonSafe(event.data) || event.data;
+                    common.logTo(logId, "流式问答完成", meta);
+                    return;
+                }
+
+                if (event.event === "error") {
+                    common.logTo(logId, "流式问答失败", event.data);
+                    if (!answerBox.textContent.trim()) {
+                        answerBox.textContent = event.data;
+                    }
+                }
+            }
         });
-        document.getElementById("answer-box").textContent = result.data
-            ? extractAnswerText(result.data)
-            : (result.text || "");
-        common.logTo(logId, `问答响应(${result.status})`, result.data || result.text);
+        if (!result.ok) {
+            document.getElementById("answer-box").textContent = result.data
+                ? extractAnswerText(result.data)
+                : (result.text || "");
+            common.logTo(logId, `流式问答响应(${result.status})`, result.data || result.text);
+        }
     }
 
     document.getElementById("load-tools-btn").addEventListener("click", loadTools);

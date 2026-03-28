@@ -81,6 +81,56 @@
         };
     }
 
+    async function requestEventStream(url, options, handlers) {
+        const response = await fetch(url, options);
+        if (!response.ok || !response.body) {
+            const text = await response.text();
+            return {
+                ok: response.ok,
+                status: response.status,
+                text,
+                data: parseJsonSafe(text)
+            };
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buffer = "";
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+                break;
+            }
+
+            buffer += decoder.decode(value, { stream: true });
+            const blocks = buffer.split("\n\n");
+            buffer = blocks.pop() || "";
+
+            for (const block of blocks) {
+                const parsed = parseSseBlock(block);
+                if (!parsed) {
+                    continue;
+                }
+                if (handlers && typeof handlers.onEvent === "function") {
+                    handlers.onEvent(parsed);
+                }
+            }
+        }
+
+        if (buffer.trim()) {
+            const parsed = parseSseBlock(buffer);
+            if (parsed && handlers && typeof handlers.onEvent === "function") {
+                handlers.onEvent(parsed);
+            }
+        }
+
+        return {
+            ok: true,
+            status: response.status
+        };
+    }
+
     function parseJsonSafe(text) {
         if (!text) {
             return null;
@@ -90,6 +140,28 @@
         } catch (error) {
             return null;
         }
+    }
+
+    function parseSseBlock(block) {
+        if (!block || !block.trim()) {
+            return null;
+        }
+
+        const lines = block.split(/\r?\n/);
+        let event = "message";
+        const dataLines = [];
+        for (const line of lines) {
+            if (line.startsWith("event:")) {
+                event = line.slice(6).trim();
+            } else if (line.startsWith("data:")) {
+                dataLines.push(line.slice(5).trimStart());
+            }
+        }
+
+        return {
+            event,
+            data: dataLines.join("\n")
+        };
     }
 
     function logTo(logId, message, payload) {
@@ -184,6 +256,7 @@
         readBaseFields,
         buildUrl,
         requestJson,
+        requestEventStream,
         parseJsonSafe,
         logTo,
         updateStatus,

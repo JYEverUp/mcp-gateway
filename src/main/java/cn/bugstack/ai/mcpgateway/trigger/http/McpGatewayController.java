@@ -19,6 +19,7 @@ import cn.bugstack.ai.mcpgateway.domain.session.model.valobj.gateway.McpToolProt
 import cn.bugstack.ai.mcpgateway.domain.session.service.ISessionManagementService;
 import cn.bugstack.ai.mcpgateway.domain.session.service.ISessionMessageService;
 import cn.bugstack.ai.mcpgateway.infrastructure.dao.IMcpGatewayDao;
+import cn.bugstack.ai.mcpgateway.infrastructure.ai.SpringAiChatCompletionService;
 import cn.bugstack.ai.mcpgateway.types.enums.ResponseCode;
 import cn.bugstack.ai.mcpgateway.types.enums.GatewayEnum;
 import cn.bugstack.ai.mcpgateway.types.exception.AppException;
@@ -74,6 +75,7 @@ public class McpGatewayController implements IMcpGatewayService {
     private final IGatewayConfigService gatewayConfigService;
     private final IGatewayToolConfigService gatewayToolConfigService;
     private final IMcpGatewayDao mcpGatewayDao;
+    private final SpringAiChatCompletionService springAiChatCompletionService;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(30))
@@ -88,6 +90,7 @@ public class McpGatewayController implements IMcpGatewayService {
             IGatewayConfigService gatewayConfigService,
             IGatewayToolConfigService gatewayToolConfigService,
             IMcpGatewayDao mcpGatewayDao,
+            SpringAiChatCompletionService springAiChatCompletionService,
             ObjectMapper objectMapper) {
         this.mcpSessionService = mcpSessionService;
         this.mcpMessageService = mcpMessageService;
@@ -97,6 +100,7 @@ public class McpGatewayController implements IMcpGatewayService {
         this.gatewayConfigService = gatewayConfigService;
         this.gatewayToolConfigService = gatewayToolConfigService;
         this.mcpGatewayDao = mcpGatewayDao;
+        this.springAiChatCompletionService = springAiChatCompletionService;
         this.objectMapper = objectMapper;
     }
 
@@ -292,7 +296,12 @@ public class McpGatewayController implements IMcpGatewayService {
                 openAiTools = buildOpenAiTools(mcpTools);
             }
 
-            JsonNode firstAiResponse = invokeOpenAiCompatible(aiBaseUrl, aiApiKey, aiModel, messages, openAiTools.isEmpty() ? null : openAiTools);
+            JsonNode firstAiResponse = springAiChatCompletionService.chatCompletion(
+                    aiBaseUrl,
+                    aiApiKey,
+                    aiModel,
+                    messages,
+                    openAiTools.isEmpty() ? null : openAiTools);
             JsonNode firstMessage = firstAiResponse.path("choices").path(0).path("message");
             if (firstMessage.isMissingNode() || firstMessage.isNull()) {
                 return ResponseEntity.internalServerError().body(Response.error(ResponseCode.UN_ERROR.getCode(), "AI 没有返回有效消息"));
@@ -323,7 +332,9 @@ public class McpGatewayController implements IMcpGatewayService {
                         .put("content", objectMapper.writeValueAsString(toolResult.result() != null ? toolResult.result() : toolResult.error())));
             }
 
-            JsonNode finalAiResponse = toolCalls.isEmpty() ? firstAiResponse : invokeOpenAiCompatible(aiBaseUrl, aiApiKey, aiModel, messages, null);
+            JsonNode finalAiResponse = toolCalls.isEmpty()
+                    ? firstAiResponse
+                    : springAiChatCompletionService.chatCompletion(aiBaseUrl, aiApiKey, aiModel, messages, null);
             JsonNode finalMessage = finalAiResponse.path("choices").path(0).path("message");
 
             Map<String, Object> result = new LinkedHashMap<>();
@@ -343,6 +354,118 @@ public class McpGatewayController implements IMcpGatewayService {
         } catch (Exception e) {
             log.error("chatWithTools failed, gatewayId={}, sessionId={}", gatewayId, sessionId, e);
             return ResponseEntity.internalServerError().body(Response.error(ResponseCode.UN_ERROR.getCode(), e.getMessage()));
+        }
+    }
+
+    @PostMapping(value = "custom-mcp/chat-with-tools/stream", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<ServerSentEvent<String>> chatWithToolsStream(
+            @RequestParam("gatewayId") String gatewayId,
+            @RequestParam("sessionId") String sessionId,
+            @RequestParam(value = "api_key", required = false) String apiKey,
+            @RequestBody Map<String, Object> requestBody) {
+        try {
+            log.info("chatWithToolsStream invoked, gatewayId={}, sessionId={}, apiKeyPresent={}, request={}",
+                    gatewayId, sessionId, !isBlank(apiKey), requestBody);
+            validateGatewayId(gatewayId);
+            if (isBlank(sessionId)) {
+                return Flux.just(sseEvent("error", "sessionId 不能为空"));
+            }
+
+            SessionConfigVO session = sessionManagementService.getSession(sessionId);
+            if (session == null) {
+                return Flux.just(sseEvent("error", "会话不存在，请先建立连接"));
+            }
+
+            String aiBaseUrl = stringValue(requestBody.get("aiBaseUrl"));
+            String aiApiKey = stringValue(requestBody.get("aiApiKey"));
+            String aiModel = stringValue(requestBody.get("aiModel"));
+            String userQuestion = stringValue(requestBody.get("userQuestion"));
+            String systemPrompt = stringValue(requestBody.get("systemPrompt"));
+            boolean enableMcpTools = booleanValue(requestBody.get("enableMcpTools"), true);
+
+            if (isBlank(aiBaseUrl) || isBlank(aiApiKey) || isBlank(aiModel) || isBlank(userQuestion)) {
+                return Flux.just(sseEvent("error", "aiBaseUrl、aiApiKey、aiModel、userQuestion 不能为空"));
+            }
+
+            ArrayNode messages = objectMapper.createArrayNode();
+            if (!isBlank(systemPrompt)) {
+                messages.add(objectMapper.createObjectNode().put("role", "system").put("content", systemPrompt));
+            }
+            messages.add(objectMapper.createObjectNode().put("role", "user").put("content", userQuestion));
+
+            List<Map<String, Object>> mcpTools = new ArrayList<>();
+            ArrayNode openAiTools = objectMapper.createArrayNode();
+            if (enableMcpTools) {
+                McpSchemaVO.JSONRPCResponse toolsResponse = processMessageForResult(gatewayId, sessionId, apiKey, buildJsonRpcRequest("tools/list", Map.of()));
+                mcpTools = extractTools(toolsResponse);
+                openAiTools = buildOpenAiTools(mcpTools);
+            }
+
+            JsonNode firstAiResponse = springAiChatCompletionService.chatCompletion(
+                    aiBaseUrl,
+                    aiApiKey,
+                    aiModel,
+                    messages,
+                    openAiTools.isEmpty() ? null : openAiTools);
+            JsonNode firstMessage = firstAiResponse.path("choices").path(0).path("message");
+            if (firstMessage.isMissingNode() || firstMessage.isNull()) {
+                return Flux.just(sseEvent("error", "AI 没有返回有效消息"));
+            }
+
+            messages.add(firstMessage);
+            ArrayNode toolCalls = arrayNodeOf(firstMessage.path("tool_calls"));
+            List<Map<String, Object>> toolExecutions = new ArrayList<>();
+            List<ServerSentEvent<String>> warmupEvents = new ArrayList<>();
+            warmupEvents.add(sseEvent("status", "AI 请求已受理"));
+
+            for (JsonNode toolCall : toolCalls) {
+                String toolName = toolCall.path("function").path("name").asText();
+                JsonNode argumentsNode = parseToolArguments(toolCall.path("function").path("arguments").asText("{}"));
+                warmupEvents.add(sseEvent("status", "正在调用工具: " + toolName));
+
+                McpSchemaVO.JSONRPCResponse toolResult = processMessageForResult(
+                        gatewayId,
+                        sessionId,
+                        apiKey,
+                        buildJsonRpcRequest("tools/call", Map.of(
+                                "name", toolName,
+                                "arguments", objectMapper.convertValue(argumentsNode, Object.class))));
+
+                toolExecutions.add(Map.of(
+                        "toolName", toolName,
+                        "arguments", objectMapper.convertValue(argumentsNode, Object.class),
+                        "result", toolResult.result() != null ? toolResult.result() : toolResult.error()));
+
+                messages.add(objectMapper.createObjectNode()
+                        .put("role", "tool")
+                        .put("tool_call_id", toolCall.path("id").asText())
+                        .put("content", objectMapper.writeValueAsString(toolResult.result() != null ? toolResult.result() : toolResult.error())));
+            }
+
+            Flux<ServerSentEvent<String>> answerFlux;
+            if (toolCalls.isEmpty()) {
+                String answer = extractMessageText(firstMessage);
+                answerFlux = Flux.just(sseEvent("answer", answer));
+            } else {
+                warmupEvents.add(sseEvent("status", "工具调用完成，开始生成最终答案"));
+                answerFlux = springAiChatCompletionService.chatCompletionStream(aiBaseUrl, aiApiKey, aiModel, messages, null)
+                        .map(chunk -> sseEvent("answer", chunk));
+            }
+
+            Map<String, Object> meta = new LinkedHashMap<>();
+            meta.put("gatewayId", gatewayId);
+            meta.put("sessionId", sessionId);
+            meta.put("usedMcpTools", enableMcpTools);
+            meta.put("toolCount", mcpTools.size());
+            meta.put("toolExecutions", toolExecutions);
+
+            return Flux.concat(
+                    Flux.fromIterable(warmupEvents),
+                    answerFlux,
+                    Flux.just(sseEvent("done", writeValue(meta))));
+        } catch (Exception e) {
+            log.error("chatWithToolsStream failed, gatewayId={}, sessionId={}", gatewayId, sessionId, e);
+            return Flux.just(sseEvent("error", e.getMessage()));
         }
     }
 
@@ -656,35 +779,18 @@ public class McpGatewayController implements IMcpGatewayService {
         return arrayNode;
     }
 
-    private JsonNode invokeOpenAiCompatible(String aiBaseUrl, String aiApiKey, String aiModel, ArrayNode messages, ArrayNode tools) throws Exception {
-        ObjectNode payload = objectMapper.createObjectNode();
-        payload.put("model", aiModel);
-        payload.set("messages", messages);
-        if (tools != null && !tools.isEmpty()) {
-            payload.set("tools", tools);
-            payload.put("tool_choice", "auto");
-        }
-
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(trimSlash(aiBaseUrl) + "/chat/completions"))
-                .timeout(Duration.ofMinutes(2))
-                .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + aiApiKey)
-                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
-                .build();
-
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new AppException(ResponseCode.UN_ERROR.getCode(), "AI 接口调用失败: " + response.body());
-        }
-        return objectMapper.readTree(response.body());
-    }
-
     private ArrayNode arrayNodeOf(JsonNode node) {
         if (node instanceof ArrayNode arrayNode) {
             return arrayNode;
         }
         return objectMapper.createArrayNode();
+    }
+
+    private ServerSentEvent<String> sseEvent(String event, String data) {
+        return ServerSentEvent.<String>builder()
+                .event(event)
+                .data(data == null ? "" : data)
+                .build();
     }
 
     private JsonNode parseToolArguments(String rawArguments) {
