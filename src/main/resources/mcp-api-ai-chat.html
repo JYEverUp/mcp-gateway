@@ -21,30 +21,13 @@
         </div>
     </div>
 
-    <div class="grid">
-        <section class="card span-6">
-            <h2>网关配置</h2>
-            <div class="field-grid">
-                <div class="field">
-                    <label for="server-url">服务地址</label>
-                    <input id="server-url" type="text">
-                </div>
-                <div class="field">
-                    <label for="gateway-id">网关标识</label>
-                    <input id="gateway-id" type="text">
-                </div>
-                <div class="field">
-                    <label for="api-key">API Key</label>
-                    <input id="api-key" type="text">
-                </div>
-                <div class="field">
-                    <label for="session-id">Session ID</label>
-                    <input id="session-id" type="text">
-                </div>
-            </div>
-        </section>
+    <input id="server-url" type="hidden">
+    <input id="gateway-id" type="hidden" value="gateway_001">
+    <input id="api-key" type="hidden">
+    <input id="session-id" type="hidden">
 
-        <section class="card span-6">
+    <div class="grid">
+        <section class="card span-12">
             <h2>模型配置</h2>
             <div class="field-grid">
                 <div class="field">
@@ -190,6 +173,7 @@
     });
 
     common.initBaseFields();
+    common.ensureApiKey(logId);
     const tools = common.getStoredTools();
     document.getElementById("tool-box").textContent = tools.length ? JSON.stringify(tools, null, 2) : "尚未加载工具";
 </script>

@@ -179,7 +179,10 @@
     }
 
     async function connectSession() {
-        const base = common.readBaseFields();
+        const base = common.ensureApiKey(logId);
+        if (!base) {
+            return;
+        }
         const url = common.buildUrl("/custom-mcp/sse", {
             gatewayId: base.gatewayId,
             api_key: base.apiKey

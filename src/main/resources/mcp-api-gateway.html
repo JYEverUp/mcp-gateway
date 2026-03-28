@@ -99,7 +99,7 @@
     }
 
     function gatewayPayload() {
-        const base = common.readBaseFields();
+        const base = common.ensureApiKey(logId);
         return {
             gatewayId: base.gatewayId,
             gatewayName: document.getElementById("gateway-name").value,
@@ -109,21 +109,35 @@
     }
 
     async function registerGateway() {
-        await callJson(common.buildUrl("/custom-mcp/gateway/register"), "POST", gatewayPayload());
+        const base = common.ensureApiKey(logId);
+        if (!base) {
+            return;
+        }
+        await callJson(common.buildUrl("/custom-mcp/gateway/register", { api_key: base.apiKey }), "POST", gatewayPayload());
     }
 
     async function gatewayDetail() {
-        const base = common.readBaseFields();
-        await callJson(common.buildUrl("/custom-mcp/gateway/detail", { gatewayId: base.gatewayId }), "GET");
+        const base = common.ensureApiKey(logId);
+        if (!base) {
+            return;
+        }
+        await callJson(common.buildUrl("/custom-mcp/gateway/detail", { gatewayId: base.gatewayId, api_key: base.apiKey }), "GET");
     }
 
     async function gatewayList() {
-        await callJson(common.buildUrl("/custom-mcp/gateway/list"), "GET");
+        const base = common.ensureApiKey(logId);
+        if (!base) {
+            return;
+        }
+        await callJson(common.buildUrl("/custom-mcp/gateway/list", { api_key: base.apiKey }), "GET");
     }
 
     async function updateAuth() {
-        const base = common.readBaseFields();
-        await callJson(common.buildUrl("/custom-mcp/gateway/auth/update"), "POST", {
+        const base = common.ensureApiKey(logId);
+        if (!base) {
+            return;
+        }
+        await callJson(common.buildUrl("/custom-mcp/gateway/auth/update", { api_key: base.apiKey }), "POST", {
             gatewayId: base.gatewayId,
             authType: document.getElementById("auth-type").value,
             authValue: document.getElementById("auth-value").value

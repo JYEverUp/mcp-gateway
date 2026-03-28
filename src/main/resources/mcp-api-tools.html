@@ -3,16 +3,121 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MCP 工具管理</title>
+    <title>MCP 工具接入</title>
     <link rel="stylesheet" href="./mcp-api-shared.css">
+    <style>
+        .tool-shell {
+            background: var(--panel);
+            border: 1px solid rgba(214, 223, 235, 0.9);
+            border-radius: 24px;
+            padding: 28px;
+            box-shadow: var(--shadow);
+        }
+
+        .tool-title {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 10px;
+            font-size: 28px;
+            font-weight: 700;
+        }
+
+        .tool-badge {
+            width: 38px;
+            height: 38px;
+            border-radius: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #a6e36a, #59c66e);
+            color: #fff;
+            font-weight: 700;
+        }
+
+        .section-line {
+            height: 4px;
+            width: 100%;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #2a72ff, #4586ff);
+            margin: 10px 0 26px;
+        }
+
+        .tool-form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 18px 20px;
+        }
+
+        .tool-form-grid .field.full {
+            grid-column: 1 / -1;
+        }
+
+        .tool-button-row {
+            display: flex;
+            gap: 14px;
+            flex-wrap: wrap;
+            margin-top: 16px;
+        }
+
+        .tool-button-row button {
+            min-width: 180px;
+            padding: 15px 24px;
+            border-radius: 16px;
+        }
+
+        .tool-button-row .list-btn {
+            background: linear-gradient(135deg, #677487, #4d5b6f);
+            color: #fff;
+            box-shadow: 0 10px 24px rgba(77, 91, 111, 0.24);
+        }
+
+        .tool-button-row .protocol-btn {
+            background: linear-gradient(135deg, #36c4dc, #1f9ec7);
+            color: #fff;
+            box-shadow: 0 10px 24px rgba(31, 158, 199, 0.24);
+        }
+
+        .tool-table-wrap {
+            margin-top: 18px;
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            overflow: hidden;
+            background: #fff;
+        }
+
+        .tool-table-scroll {
+            max-height: 280px;
+            overflow: auto;
+        }
+
+        .tool-empty {
+            padding: 24px;
+            color: var(--muted);
+        }
+
+        .mini-nav {
+            margin-top: 16px;
+        }
+
+        @media (max-width: 960px) {
+            .tool-form-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .tool-button-row button {
+                width: 100%;
+            }
+        }
+    </style>
 </head>
 <body>
 <div class="page">
     <div class="hero">
         <div>
-            <h1>MCP 工具管理</h1>
-            <p>这个页面拆出来后，工具注册、工具列表和协议更新会更清楚，也更方便对照数据库里的工具协议配置做联调。</p>
-            <div class="nav-links">
+            <h1>工具接入</h1>
+            <p>这个页面用于维护 MCP 工具注册、HTTP 协议配置和映射信息，下方直接展示已注册工具列表。</p>
+            <div class="nav-links mini-nav">
                 <a class="nav-button secondary" href="./mcp-api-test-mock.html">返回首页</a>
                 <a class="nav-button secondary" href="./mcp-api-connection.html">连接调试</a>
                 <a class="nav-button secondary" href="./mcp-api-gateway.html">网关管理</a>
@@ -21,81 +126,185 @@
         </div>
     </div>
 
-    <div class="grid">
-        <section class="card span-7">
-            <h2>工具配置</h2>
-            <div class="field-grid">
-                <div class="field">
-                    <label for="server-url">服务地址</label>
-                    <input id="server-url" type="text">
-                </div>
-                <div class="field">
-                    <label for="gateway-id">网关标识</label>
-                    <input id="gateway-id" type="text">
-                </div>
-                <div class="field">
-                    <label for="api-key">API Key</label>
-                    <input id="api-key" type="text">
-                </div>
-                <div class="field">
-                    <label for="tool-name">工具名称</label>
-                    <input id="tool-name" type="text" value="JavaSDKMCPClient_getCompanyEmployee">
-                </div>
+    <section class="tool-shell">
+        <input id="server-url" type="hidden">
+        <input id="gateway-id" type="hidden" value="gateway_001">
+        <input id="api-key" type="hidden">
+
+        <div class="tool-title">
+            <span class="tool-badge">T</span>
+            <span>工具接入</span>
+        </div>
+        <div class="section-line"></div>
+
+        <div class="tool-form-grid">
+            <div class="field">
+                <label for="tool-name">工具名称:</label>
+                <input id="tool-name" type="text" value="JavaSDKMCPClient_getCompanyEmployee">
             </div>
-            <div class="field" style="margin-top: 14px;">
-                <label for="tool-desc">工具说明</label>
-                <textarea id="tool-desc" class="small-textarea">获取公司雇员信息</textarea>
+            <div class="field">
+                <label for="tool-desc">工具描述:</label>
+                <input id="tool-desc" type="text" value="获取公司雇员信息">
             </div>
-            <div class="field-grid" style="margin-top: 14px;">
-                <div class="field">
-                    <label for="protocol-id">协议 ID</label>
-                    <input id="protocol-id" type="number" value="83666188">
-                </div>
-                <div class="field">
-                    <label for="http-method">HTTP Method</label>
-                    <select id="http-method">
-                        <option value="POST">POST</option>
-                        <option value="GET">GET</option>
-                    </select>
-                </div>
-            </div>
-            <div class="field" style="margin-top: 14px;">
-                <label for="http-url">HTTP URL</label>
+            <div class="field">
+                <label for="http-url">HTTP 地址:</label>
                 <input id="http-url" type="text" value="http://localhost:8701/api/v1/mcp/get_company_employee">
             </div>
-            <div class="field" style="margin-top: 14px;">
-                <label for="mapping-body">请求映射 JSON</label>
-                <textarea id="mapping-body">{
-  "requestMappingType": "BODY",
-  "requestMapping": "$.arguments.xxxRequest01",
-  "responseMappingType": "BODY",
-  "responseMapping": "$"
-}</textarea>
+            <div class="field">
+                <label for="http-method">HTTP 方法:</label>
+                <select id="http-method">
+                    <option value="POST">POST</option>
+                    <option value="GET">GET</option>
+                </select>
             </div>
-            <div class="button-row" style="margin-top: 16px;">
-                <button id="register-tool-btn">注册工具</button>
-                <button id="list-tool-btn" class="secondary">工具列表</button>
-                <button id="protocol-btn" class="secondary">更新协议</button>
-                <button id="clear-log-btn" class="warn">清空日志</button>
+            <div class="field full">
+                <label for="http-headers">HTTP Headers(JSON):</label>
+                <textarea id="http-headers" class="small-textarea">{}</textarea>
             </div>
-        </section>
+            <div class="field full">
+                <label for="mapping-body">字段映射(JSON数组):</label>
+                <textarea id="mapping-body">[
+  {
+    "mappingType": "request",
+    "fieldName": "city",
+    "mcpPath": "xxxRequest01.city",
+    "mcpType": "string",
+    "mcpDesc": "城市",
+    "isRequired": 1,
+    "sortOrder": 1
+  },
+  {
+    "mappingType": "request",
+    "parentPath": "xxxRequest01.company",
+    "fieldName": "name",
+    "mcpPath": "xxxRequest01.company.name",
+    "mcpType": "string",
+    "mcpDesc": "公司名称",
+    "isRequired": 1,
+    "sortOrder": 2
+  }
+]</textarea>
+            </div>
+        </div>
 
-        <section class="card span-5">
-            <h2>最近响应</h2>
-            <div id="response-box" class="response-box light"></div>
-        </section>
+        <div class="tool-button-row">
+            <button id="register-tool-btn">新增工具</button>
+            <button id="list-tool-btn" class="list-btn" type="button">查看工具列表</button>
+        </div>
 
-        <section class="card span-12">
-            <h2>操作日志</h2>
+        <div class="tool-form-grid" style="margin-top: 22px;">
+            <div class="field">
+                <label for="protocol-id">协议ID:</label>
+                <input id="protocol-id" type="number" placeholder="输入要更新的 protocolId" value="83666188">
+            </div>
+            <div class="field">
+                <label for="protocol-type">协议类型:</label>
+                <select id="protocol-type">
+                    <option value="http">http</option>
+                </select>
+            </div>
+            <div class="field full">
+                <label for="tool-id">工具ID（更新协议时选填）:</label>
+                <input id="tool-id" type="text" placeholder="输入 toolId，便于记录追踪">
+            </div>
+        </div>
+
+        <div class="tool-button-row">
+            <button id="protocol-btn" class="protocol-btn" type="button">更新工具协议</button>
+            <button id="clear-log-btn" class="warn" type="button">清空日志</button>
+        </div>
+
+        <div style="margin-top: 28px;">
+            <h2 style="margin-bottom: 12px;">已注册工具:</h2>
+            <div class="tool-table-wrap">
+                <div class="tool-table-scroll">
+                    <table class="table">
+                        <thead>
+                        <tr>
+                            <th>工具名</th>
+                            <th>描述</th>
+                            <th>协议</th>
+                            <th>HTTP</th>
+                            <th>映射数</th>
+                        </tr>
+                        </thead>
+                        <tbody id="tool-table-body">
+                        <tr>
+                            <td colspan="5" class="tool-empty">暂无工具</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top: 28px;">
+            <h2 style="margin-bottom: 12px;">操作日志:</h2>
             <div id="log-box" class="log-box"></div>
-        </section>
-    </div>
+        </div>
+    </section>
 </div>
 
 <script src="./mcp-api-common.js"></script>
 <script>
     const common = window.McpApiCommon;
     const logId = "log-box";
+
+    function parseJsonArray(text) {
+        const data = common.parseJsonSafe(text);
+        return Array.isArray(data) ? data : [];
+    }
+
+    function normalizeTools(payload) {
+        const candidate = payload?.data || payload?.result?.tools || payload?.result || payload;
+        if (!Array.isArray(candidate)) {
+            return [];
+        }
+
+        return candidate.map((item) => ({
+            name: item.name || item.toolName || "-",
+            description: item.description || item.toolDesc || item.toolDescription || "",
+            protocol: item.protocolType || item.protocol || "http",
+            http: item.httpUrl || item.url || "",
+            mappingCount: item.mappingCount || item.mappingNum || item.mappings?.length || 0
+        }));
+    }
+
+    function renderRegisteredTools(tools) {
+        const body = document.getElementById("tool-table-body");
+        if (!Array.isArray(tools) || !tools.length) {
+            body.innerHTML = `<tr><td colspan="5" class="tool-empty">暂无工具</td></tr>`;
+            return;
+        }
+
+        body.innerHTML = tools.map((tool) => `
+            <tr>
+                <td>${tool.name || "-"}</td>
+                <td>${tool.description || "暂无说明"}</td>
+                <td>${tool.protocol || "http"}</td>
+                <td>${tool.http || "-"}</td>
+                <td>${tool.mappingCount || 0}</td>
+            </tr>
+        `).join("");
+    }
+
+    async function listTools() {
+        const base = common.ensureApiKey(logId);
+        if (!base) {
+            return;
+        }
+        const url = common.buildUrl("/custom-mcp/tool/list", { gatewayId: base.gatewayId, api_key: base.apiKey });
+        common.logTo(logId, `GET ${url}`);
+        const result = await common.requestJson(url, { method: "GET" });
+        common.logTo(logId, `响应(${result.status})`, result.data || result.text);
+        const tools = normalizeTools(result.data);
+        if (tools.length) {
+            common.setStoredTools(tools);
+            renderRegisteredTools(tools);
+        } else {
+            renderRegisteredTools(common.getStoredTools());
+        }
+    }
 
     async function callJson(url, method, body) {
         common.logTo(logId, `${method} ${url}`, body || "");
@@ -104,18 +313,12 @@
             headers: { "Content-Type": "application/json" },
             body: body ? JSON.stringify(body) : undefined
         });
-        document.getElementById("response-box").textContent = result.data
-            ? JSON.stringify(result.data, null, 2)
-            : (result.text || "");
         common.logTo(logId, `响应(${result.status})`, result.data || result.text);
-        const tools = result.data?.data || result.data?.result?.tools;
-        if (Array.isArray(tools)) {
-            common.setStoredTools(tools);
-        }
+        return result;
     }
 
     function toolRegisterPayload() {
-        const base = common.readBaseFields();
+        const base = common.ensureApiKey(logId);
         return {
             gatewayId: base.gatewayId,
             toolName: document.getElementById("tool-name").value,
@@ -124,36 +327,50 @@
     }
 
     function protocolPayload() {
-        const base = common.readBaseFields();
+        const base = common.ensureApiKey(logId);
         return {
             gatewayId: base.gatewayId,
+            toolId: document.getElementById("tool-id").value || null,
             toolName: document.getElementById("tool-name").value,
             protocolId: Number(document.getElementById("protocol-id").value),
+            protocolType: document.getElementById("protocol-type").value,
             httpUrl: document.getElementById("http-url").value,
             httpMethod: document.getElementById("http-method").value,
-            mappingConfig: common.parseJsonSafe(document.getElementById("mapping-body").value) || {}
+            httpHeaders: common.parseJsonSafe(document.getElementById("http-headers").value) || {},
+            mappings: parseJsonArray(document.getElementById("mapping-body").value)
         };
     }
 
     document.getElementById("register-tool-btn").addEventListener("click", async () => {
-        await callJson(common.buildUrl("/custom-mcp/tool/register"), "POST", toolRegisterPayload());
+        const base = common.ensureApiKey(logId);
+        if (!base) {
+            return;
+        }
+        const result = await callJson(common.buildUrl("/custom-mcp/tool/register", { api_key: base.apiKey }), "POST", toolRegisterPayload());
+        if (result.ok) {
+            await listTools();
+        }
     });
 
-    document.getElementById("list-tool-btn").addEventListener("click", async () => {
-        const base = common.readBaseFields();
-        await callJson(common.buildUrl("/custom-mcp/tool/list", { gatewayId: base.gatewayId }), "GET");
-    });
+    document.getElementById("list-tool-btn").addEventListener("click", listTools);
 
     document.getElementById("protocol-btn").addEventListener("click", async () => {
-        await callJson(common.buildUrl("/custom-mcp/tool/protocol/update"), "POST", protocolPayload());
+        const base = common.ensureApiKey(logId);
+        if (!base) {
+            return;
+        }
+        const result = await callJson(common.buildUrl("/custom-mcp/tool/protocol/update", { api_key: base.apiKey }), "POST", protocolPayload());
+        if (result.ok) {
+            await listTools();
+        }
     });
 
     document.getElementById("clear-log-btn").addEventListener("click", () => {
         document.getElementById(logId).textContent = "";
-        document.getElementById("response-box").textContent = "";
     });
 
     common.initBaseFields();
+    renderRegisteredTools(common.getStoredTools());
 </script>
 </body>
 </html>

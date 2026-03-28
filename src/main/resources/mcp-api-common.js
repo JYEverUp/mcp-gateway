@@ -26,7 +26,7 @@
         const defaults = {
             serverUrl: "http://localhost:8080",
             gatewayId: "gateway_001",
-            apiKey: "test-api-key",
+            apiKey: "",
             sessionId: ""
         };
 
@@ -135,10 +135,36 @@
     }
 
     function ensureSession(logId) {
-        const base = readBaseFields();
+        const base = ensureApiKey(logId);
+        if (!base) {
+            return null;
+        }
         if (!base.sessionId) {
             logTo(logId, "缺少 sessionId，请先建立连接");
             return null;
+        }
+        return base;
+    }
+
+    function ensureApiKey(logId) {
+        let base = readBaseFields();
+        if (base.apiKey) {
+            return base;
+        }
+
+        const input = window.prompt("请输入 API Key 后再继续操作");
+        if (!input || !input.trim()) {
+            if (logId) {
+                logTo(logId, "缺少 API Key，操作已拦截");
+            }
+            return null;
+        }
+
+        setInputValue("api-key", input.trim());
+        save(STORAGE_KEYS.apiKey, input.trim());
+        base = readBaseFields();
+        if (logId) {
+            logTo(logId, "已写入 API Key，本次操作继续执行");
         }
         return base;
     }
@@ -164,6 +190,7 @@
         updateSessionBox,
         parseSessionIdFromEndpoint,
         ensureSession,
+        ensureApiKey,
         save,
         trimSlash,
         getStoredTools,
