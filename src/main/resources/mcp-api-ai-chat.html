@@ -108,7 +108,8 @@
         }
         const url = common.buildUrl("/custom-mcp/message/result", {
             gatewayId: base.gatewayId,
-            sessionId: base.sessionId
+            sessionId: base.sessionId,
+            api_key: base.apiKey
         });
         const payload = {
             jsonrpc: "2.0",
@@ -119,10 +120,7 @@
         common.logTo(logId, "拉取工具列表", payload);
         const result = await common.requestJson(url, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "x-api-key": base.apiKey || ""
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
         });
         const tools = result.data?.result?.tools || result.data?.data?.tools || [];

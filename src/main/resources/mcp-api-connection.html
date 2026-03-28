@@ -107,6 +107,7 @@
 <script>
     const common = window.McpApiCommon;
     const logId = "log-box";
+    let eventSource = null;
 
     function buildPreset(method) {
         if (method === "initialize") {
@@ -179,20 +180,70 @@
 
     async function connectSession() {
         const base = common.readBaseFields();
-        const url = common.buildUrl("/custom-mcp/session", {
+        const url = common.buildUrl("/custom-mcp/sse", {
             gatewayId: base.gatewayId,
-            apiKey: base.apiKey
+            api_key: base.apiKey
         });
         common.logTo(logId, "发起连接", url);
-        const result = await common.requestJson(url, { method: "GET" });
-        const endpoint = result.data?.data?.endpoint || result.data?.data || "";
-        common.updateSessionBox("session-box", base, endpoint);
+        if (eventSource) {
+            eventSource.close();
+        }
+
+        eventSource = new EventSource(url);
         common.updateStatus("status-box", "连接状态", [
-            `HTTP: ${result.status}`,
-            `成功: ${result.ok}`,
-            `Endpoint: ${endpoint || "-"}`
+            "HTTP: SSE",
+            "成功: 建连中",
+            `Endpoint: ${url}`
         ]);
-        common.logTo(logId, `连接响应(${result.status})`, result.data || result.text);
+
+        eventSource.onopen = () => {
+            common.updateStatus("status-box", "连接状态", [
+                "HTTP: SSE",
+                "成功: 已连接",
+                `Endpoint: ${url}`
+            ]);
+            common.logTo(logId, "SSE 打开", url);
+        };
+
+        eventSource.addEventListener("endpoint", (event) => {
+            const endpoint = event.data || "";
+            const sessionId = common.parseSessionIdFromEndpoint(endpoint);
+            if (sessionId) {
+                common.setInputValue("session-id", sessionId);
+                common.save(common.STORAGE_KEYS.sessionId, sessionId);
+            }
+            common.updateSessionBox("session-box", {
+                ...base,
+                sessionId: sessionId || base.sessionId
+            }, endpoint);
+            common.updateStatus("status-box", "连接状态", [
+                "HTTP: SSE",
+                "成功: 已连接",
+                `Endpoint: ${endpoint || url}`
+            ]);
+            common.logTo(logId, "收到会话端点", endpoint);
+        });
+
+        eventSource.addEventListener("message", (event) => {
+            const data = common.parseJsonSafe(event.data) || event.data;
+            document.getElementById("response-box").textContent = typeof data === "string"
+                ? data
+                : JSON.stringify(data, null, 2);
+            common.logTo(logId, "收到响应", data);
+        });
+
+        eventSource.addEventListener("ping", (event) => {
+            common.logTo(logId, "心跳", event.data || "");
+        });
+
+        eventSource.onerror = () => {
+            common.updateStatus("status-box", "连接状态", [
+                "HTTP: SSE",
+                "成功: 连接异常",
+                `Endpoint: ${url}`
+            ]);
+            common.logTo(logId, "SSE 事件", "连接异常或已关闭");
+        };
     }
 
     async function disconnectSession() {
@@ -204,12 +255,18 @@
             gatewayId: base.gatewayId,
             sessionId: base.sessionId
         });
+        if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+        }
         const result = await common.requestJson(url, { method: "DELETE" });
         common.updateStatus("status-box", "连接状态", [
             `HTTP: ${result.status}`,
             `成功: ${result.ok}`,
             "会话已请求断开"
         ]);
+        common.setInputValue("session-id", "");
+        common.save(common.STORAGE_KEYS.sessionId, "");
         common.logTo(logId, `断开响应(${result.status})`, result.data || result.text);
     }
 
@@ -230,15 +287,13 @@
         }
         const url = common.buildUrl("/custom-mcp/message/result", {
             gatewayId: base.gatewayId,
-            sessionId: base.sessionId
+            sessionId: base.sessionId,
+            api_key: base.apiKey
         });
         common.logTo(logId, "发送 MCP 消息", payload);
         const result = await common.requestJson(url, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "x-api-key": base.apiKey || ""
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
         });
         document.getElementById("response-box").textContent = result.data
