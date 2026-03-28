@@ -1,0 +1,6 @@
+.git
+.idea
+.repo
+target
+*.iml
+*.log

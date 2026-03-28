@@ -226,6 +226,45 @@ mvn spring-boot:run
 mvn -q -DskipTests compile
 ```
 
+### 8.4 Docker 部署
+
+项目已经内置：
+
+- [Dockerfile](D:\hoduan\ai-mcp-gateway\mcp-gateway\Dockerfile)
+- [docker-compose.yml](D:\hoduan\ai-mcp-gateway\mcp-gateway\docker-compose.yml)
+- [deploy.sh](D:\hoduan\ai-mcp-gateway\mcp-gateway\deploy.sh)
+- [deploy.bat](D:\hoduan\ai-mcp-gateway\mcp-gateway\deploy.bat)
+
+直接执行：
+
+```bash
+docker compose up -d --build
+```
+
+或：
+
+```bash
+sh deploy.sh
+```
+
+Windows 下可以执行：
+
+```bat
+deploy.bat
+```
+
+默认启动后：
+
+- MySQL: `localhost:3306`
+- Application: `localhost:8080`
+- Health Check: `http://localhost:8080/api/health`
+
+说明：
+
+- `docker-compose.yml` 会自动初始化 `ai_mcp_gateway_v2` 数据库
+- 初始化脚本来自 [ai_mcp_gateway_v2.sql](D:\hoduan\ai-mcp-gateway\mcp-gateway\src\main\resources\ai_mcp_gateway_v2.sql)
+- 应用通过环境变量注入数据库连接信息
+
 ---
 
 ## 9. 推荐使用流程
@@ -248,15 +287,36 @@ mvn -q -DskipTests compile
 
 ---
 
-## 10. 当前治理能力
+## 10. 联调测试服务
 
-### 10.1 鉴权
+为了方便快速体验完整链路，推荐配合下面这个测试服务端一起使用：
+
+- [ai-mcp-gatewa-demo-mcp-server](https://github.com/JYEverUp/ai-mcp-gatewa-demo-mcp-server)
+
+推荐用途：
+
+- 验证网关到外部工具接口的协议映射是否正常
+- 联调 `tools/list`、`tools/call` 返回结果
+- 配合 `mcp-api-tools.html` 和 `mcp-api-ai-chat.html` 做整链路测试
+
+推荐联调顺序：
+
+1. 先启动本项目 `mcp-gateway`
+2. 再启动测试服务端 [ai-mcp-gatewa-demo-mcp-server](https://github.com/JYEverUp/ai-mcp-gatewa-demo-mcp-server)
+3. 在网关中配置工具协议地址指向测试服务端接口
+4. 使用 `mcp-api-connection.html`、`mcp-api-tools.html`、`mcp-api-ai-chat.html` 完成验证
+
+---
+
+## 11. 当前治理能力
+
+### 11.1 鉴权
 
 - 统一 API Key 拦截
 - 按网关匹配有效 Key
 - 支持状态校验与过期时间校验
 
-### 10.2 限流
+### 11.2 限流
 
 当前已具备第一版内存限流能力：
 
@@ -268,7 +328,7 @@ mvn -q -DskipTests compile
 
 ---
 
-## 11. 项目亮点
+## 12. 项目亮点
 
 - 使用 **MCP** 作为工具协议抽象，而不是把工具调用写死在业务里
 - 使用 **Spring AI** 替代手写模型请求，支持标准化大模型接入
@@ -279,7 +339,7 @@ mvn -q -DskipTests compile
 
 ---
 
-## 12. 后续可扩展方向
+## 13. 后续可扩展方向
 
 - Redis 分布式限流
 - 工具调用熔断与重试
@@ -292,7 +352,7 @@ mvn -q -DskipTests compile
 
 ---
 
-## 13. 说明
+## 14. 说明
 
 本项目更偏向 **AI Gateway / MCP Protocol / Tool Routing** 方向的工程实践，适合作为：
 
