@@ -87,4 +87,51 @@ class McpGatewayApplicationTests {
                 .andExpect(jsonPath("$[?(@.toolName=='lookup_city_weather')]").exists());
     }
 
+    @Test
+    void registerGatewayAndUpdateAuth() throws Exception {
+        String registerBody = """
+                {
+                  "gatewayId": "gateway_003",
+                  "gatewayName": "Employee Gateway",
+                  "gatewayDesc": "Employee info gateway",
+                  "version": "1.0.0",
+                  "auth": 1,
+                  "status": 1
+                }
+                """;
+
+        mockMvc.perform(post("/custom-mcp/gateway/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(registerBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.gatewayId").value("gateway_003"))
+                .andExpect(jsonPath("$.status").value("CREATED"));
+
+        mockMvc.perform(get("/custom-mcp/gateway/detail")
+                        .param("gatewayId", "gateway_003"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.gatewayId").value("gateway_003"))
+                .andExpect(jsonPath("$.auth").value(1));
+
+        String authBody = """
+                {
+                  "gatewayId": "gateway_003",
+                  "auth": 0
+                }
+                """;
+
+        mockMvc.perform(post("/custom-mcp/gateway/auth/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(authBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.updated").value(true))
+                .andExpect(jsonPath("$.auth").value(0));
+
+        mockMvc.perform(get("/custom-mcp/gateway/detail")
+                        .param("gatewayId", "gateway_003"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.gatewayId").value("gateway_003"))
+                .andExpect(jsonPath("$.auth").value(0));
+    }
+
 }

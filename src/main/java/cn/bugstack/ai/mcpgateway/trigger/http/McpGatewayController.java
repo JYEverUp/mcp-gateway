@@ -1,8 +1,15 @@
 package cn.bugstack.ai.mcpgateway.trigger.http;
 
+import cn.bugstack.ai.mcpgateway.api.IMcpGatewayService;
 import cn.bugstack.ai.mcpgateway.api.response.Response;
 import cn.bugstack.ai.mcpgateway.cases.mcp.IMcpMessageService;
 import cn.bugstack.ai.mcpgateway.cases.mcp.IMcpSessionService;
+import cn.bugstack.ai.mcpgateway.domain.gateway.model.entity.GatewayConfigCommandEntity;
+import cn.bugstack.ai.mcpgateway.domain.gateway.model.entity.GatewayToolConfigCommandEntity;
+import cn.bugstack.ai.mcpgateway.domain.gateway.model.valobj.GatewayConfigVO;
+import cn.bugstack.ai.mcpgateway.domain.gateway.model.valobj.GatewayToolConfigVO;
+import cn.bugstack.ai.mcpgateway.domain.gateway.service.IGatewayConfigService;
+import cn.bugstack.ai.mcpgateway.domain.gateway.service.IGatewayToolConfigService;
 import cn.bugstack.ai.mcpgateway.domain.session.adapter.repository.ISessionRepository;
 import cn.bugstack.ai.mcpgateway.domain.session.model.entity.HandleMessageCommandEntity;
 import cn.bugstack.ai.mcpgateway.domain.session.model.valobj.McpSchemaVO;
@@ -11,7 +18,9 @@ import cn.bugstack.ai.mcpgateway.domain.session.model.valobj.gateway.McpToolConf
 import cn.bugstack.ai.mcpgateway.domain.session.model.valobj.gateway.McpToolProtocolConfigVO;
 import cn.bugstack.ai.mcpgateway.domain.session.service.ISessionManagementService;
 import cn.bugstack.ai.mcpgateway.domain.session.service.ISessionMessageService;
+import cn.bugstack.ai.mcpgateway.infrastructure.dao.IMcpGatewayDao;
 import cn.bugstack.ai.mcpgateway.types.enums.ResponseCode;
+import cn.bugstack.ai.mcpgateway.types.enums.GatewayEnum;
 import cn.bugstack.ai.mcpgateway.types.exception.AppException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -51,13 +60,16 @@ import java.util.UUID;
 @RequestMapping("/")
 @CrossOrigin(origins = "*", allowedHeaders = "*", methods = {
         RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE, RequestMethod.OPTIONS})
-public class McpGatewayController {
+public class McpGatewayController implements IMcpGatewayService {
 
     private final IMcpSessionService mcpSessionService;
     private final IMcpMessageService mcpMessageService;
     private final ISessionManagementService sessionManagementService;
     private final ISessionMessageService sessionMessageService;
     private final ISessionRepository sessionRepository;
+    private final IGatewayConfigService gatewayConfigService;
+    private final IGatewayToolConfigService gatewayToolConfigService;
+    private final IMcpGatewayDao mcpGatewayDao;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(30))
@@ -69,12 +81,18 @@ public class McpGatewayController {
             ISessionManagementService sessionManagementService,
             ISessionMessageService sessionMessageService,
             ISessionRepository sessionRepository,
+            IGatewayConfigService gatewayConfigService,
+            IGatewayToolConfigService gatewayToolConfigService,
+            IMcpGatewayDao mcpGatewayDao,
             ObjectMapper objectMapper) {
         this.mcpSessionService = mcpSessionService;
         this.mcpMessageService = mcpMessageService;
         this.sessionManagementService = sessionManagementService;
         this.sessionMessageService = sessionMessageService;
         this.sessionRepository = sessionRepository;
+        this.gatewayConfigService = gatewayConfigService;
+        this.gatewayToolConfigService = gatewayToolConfigService;
+        this.mcpGatewayDao = mcpGatewayDao;
         this.objectMapper = objectMapper;
     }
 
@@ -128,6 +146,76 @@ public class McpGatewayController {
             @RequestParam(value = "api_key", required = false) String apiKey,
             @RequestBody String messageBody) {
         return debugHandleMessage(gatewayId, sessionId, apiKey, messageBody);
+    }
+
+    @PostMapping(value = "custom-mcp/gateway/register", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> registerGateway(@RequestBody GatewayRegisterRequest request) {
+        try {
+            validateGatewayRegisterRequest(request);
+            GatewayConfigCommandEntity commandEntity = new GatewayConfigCommandEntity();
+            commandEntity.setGatewayConfigVO(new GatewayConfigVO(
+                    request.getGatewayId(),
+                    request.getGatewayName(),
+                    request.getGatewayDesc(),
+                    isBlank(request.getVersion()) ? "1.0.0" : request.getVersion(),
+                    request.getAuth() == null ? GatewayEnum.GatewayAuthStatusEnum.ENABLE : GatewayEnum.GatewayAuthStatusEnum.getByCode(request.getAuth()),
+                    request.getStatus() == null ? GatewayEnum.GatewayStatus.NOT_VERIFIED : GatewayEnum.GatewayStatus.get(request.getStatus())));
+            gatewayConfigService.saveGatewayConfig(commandEntity);
+            return ResponseEntity.ok(Map.of(
+                    "gatewayId", request.getGatewayId(),
+                    "gatewayName", request.getGatewayName(),
+                    "status", "CREATED"));
+        } catch (AppException e) {
+            return ResponseEntity.badRequest().body(Response.error(e.getCode(), e.getInfo()));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Response.error(ResponseCode.UN_ERROR.getCode(), e.getMessage()));
+        }
+    }
+
+    @PostMapping(value = "custom-mcp/gateway/auth/update", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> updateGatewayAuth(@RequestBody GatewayAuthUpdateRequest request) {
+        try {
+            if (request == null || isBlank(request.getGatewayId()) || request.getAuth() == null) {
+                throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "gatewayId、auth 不能为空");
+            }
+            gatewayConfigService.updateGatewayAuthStatus(
+                    GatewayConfigCommandEntity.buildUpdateGatewayAuthStatusVO(
+                            request.getGatewayId(),
+                            GatewayEnum.GatewayAuthStatusEnum.getByCode(request.getAuth())));
+            return ResponseEntity.ok(Map.of(
+                    "gatewayId", request.getGatewayId(),
+                    "auth", request.getAuth(),
+                    "updated", true));
+        } catch (AppException e) {
+            return ResponseEntity.badRequest().body(Response.error(e.getCode(), e.getInfo()));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Response.error(ResponseCode.UN_ERROR.getCode(), e.getMessage()));
+        }
+    }
+
+    @GetMapping(value = "custom-mcp/gateway/detail", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> queryGatewayDetail(@RequestParam("gatewayId") String gatewayId) {
+        try {
+            validateGatewayId(gatewayId);
+            var gateway = mcpGatewayDao.queryMcpGatewayByGatewayId(gatewayId);
+            if (gateway == null) {
+                return ResponseEntity.notFound().build();
+            }
+            return ResponseEntity.ok(gateway);
+        } catch (AppException e) {
+            return ResponseEntity.badRequest().body(Response.error(e.getCode(), e.getInfo()));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Response.error(ResponseCode.UN_ERROR.getCode(), e.getMessage()));
+        }
+    }
+
+    @GetMapping(value = "custom-mcp/gateway/list", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> queryGatewayList() {
+        try {
+            return ResponseEntity.ok(mcpGatewayDao.queryAll());
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Response.error(ResponseCode.UN_ERROR.getCode(), e.getMessage()));
+        }
     }
 
     @PostMapping(value = "custom-mcp/chat-with-tools", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
@@ -250,6 +338,36 @@ public class McpGatewayController {
             result.put("mappingCount", request.getMappings().size());
             result.put("status", "CREATED");
             return ResponseEntity.ok(result);
+        } catch (AppException e) {
+            return ResponseEntity.badRequest().body(Response.error(e.getCode(), e.getInfo()));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Response.error(ResponseCode.UN_ERROR.getCode(), e.getMessage()));
+        }
+    }
+
+    @PostMapping(value = "custom-mcp/tool/protocol/update", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> updateToolProtocol(@RequestBody ToolProtocolUpdateRequest request) {
+        try {
+            if (request == null || isBlank(request.getGatewayId()) || request.getProtocolId() == null || isBlank(request.getProtocolType())) {
+                throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "gatewayId、protocolId、protocolType 不能为空");
+            }
+            GatewayToolConfigCommandEntity commandEntity = new GatewayToolConfigCommandEntity();
+            commandEntity.setGatewayToolConfigVO(new GatewayToolConfigVO(
+                    request.getGatewayId(),
+                    request.getToolId(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    request.getProtocolId(),
+                    request.getProtocolType()));
+            gatewayToolConfigService.updateGatewayToolProtocol(commandEntity);
+            return ResponseEntity.ok(Map.of(
+                    "gatewayId", request.getGatewayId(),
+                    "toolId", request.getToolId(),
+                    "protocolId", request.getProtocolId(),
+                    "protocolType", request.getProtocolType(),
+                    "updated", true));
         } catch (AppException e) {
             return ResponseEntity.badRequest().body(Response.error(e.getCode(), e.getInfo()));
         } catch (Exception e) {
@@ -626,6 +744,60 @@ public class McpGatewayController {
         public void setIsRequired(Integer isRequired) { this.isRequired = isRequired; }
         public Integer getSortOrder() { return sortOrder; }
         public void setSortOrder(Integer sortOrder) { this.sortOrder = sortOrder; }
+    }
+
+    public static class GatewayRegisterRequest {
+        private String gatewayId;
+        private String gatewayName;
+        private String gatewayDesc;
+        private String version;
+        private Integer auth;
+        private Integer status;
+
+        public String getGatewayId() { return gatewayId; }
+        public void setGatewayId(String gatewayId) { this.gatewayId = gatewayId; }
+        public String getGatewayName() { return gatewayName; }
+        public void setGatewayName(String gatewayName) { this.gatewayName = gatewayName; }
+        public String getGatewayDesc() { return gatewayDesc; }
+        public void setGatewayDesc(String gatewayDesc) { this.gatewayDesc = gatewayDesc; }
+        public String getVersion() { return version; }
+        public void setVersion(String version) { this.version = version; }
+        public Integer getAuth() { return auth; }
+        public void setAuth(Integer auth) { this.auth = auth; }
+        public Integer getStatus() { return status; }
+        public void setStatus(Integer status) { this.status = status; }
+    }
+
+    public static class GatewayAuthUpdateRequest {
+        private String gatewayId;
+        private Integer auth;
+
+        public String getGatewayId() { return gatewayId; }
+        public void setGatewayId(String gatewayId) { this.gatewayId = gatewayId; }
+        public Integer getAuth() { return auth; }
+        public void setAuth(Integer auth) { this.auth = auth; }
+    }
+
+    public static class ToolProtocolUpdateRequest {
+        private String gatewayId;
+        private Long toolId;
+        private Long protocolId;
+        private String protocolType;
+
+        public String getGatewayId() { return gatewayId; }
+        public void setGatewayId(String gatewayId) { this.gatewayId = gatewayId; }
+        public Long getToolId() { return toolId; }
+        public void setToolId(Long toolId) { this.toolId = toolId; }
+        public Long getProtocolId() { return protocolId; }
+        public void setProtocolId(Long protocolId) { this.protocolId = protocolId; }
+        public String getProtocolType() { return protocolType; }
+        public void setProtocolType(String protocolType) { this.protocolType = protocolType; }
+    }
+
+    private void validateGatewayRegisterRequest(GatewayRegisterRequest request) {
+        if (request == null || isBlank(request.getGatewayId()) || isBlank(request.getGatewayName())) {
+            throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "gatewayId、gatewayName 不能为空");
+        }
     }
 
 }
