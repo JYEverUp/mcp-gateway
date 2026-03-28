@@ -480,6 +480,13 @@
           </div>
 
           <div class="field">
+            <label for="tool-call-name">工具调用目标:</label>
+            <select id="tool-call-name">
+              <option value="">请先点击“工具列表”或“拉取工具”加载</option>
+            </select>
+          </div>
+
+          <div class="field">
             <label for="json-params">参数 (JSON格式):</label>
             <textarea id="json-params">{}</textarea>
           </div>
@@ -763,6 +770,7 @@
     const actionButtons = document.querySelectorAll(".action-tabs .btn");
     const methodSelect = document.getElementById("method-name");
     const customMethod = document.getElementById("custom-method");
+    const toolCallNameSelect = document.getElementById("tool-call-name");
     const paramsInput = document.getElementById("json-params");
     const messageId = document.getElementById("message-id");
     const serverUrlInput = document.getElementById("server-url");
@@ -895,8 +903,13 @@
     function renderToolList(tools) {
       if (!tools || !tools.length) {
         toolListBody.innerHTML = '<tr><td colspan="5">当前网关下还没有工具</td></tr>';
+        toolCallNameSelect.innerHTML = '<option value="">当前没有可调用工具</option>';
         return;
       }
+
+      toolCallNameSelect.innerHTML = tools.map((tool) => `
+        <option value="${tool.toolName || ""}">${tool.toolName || ""}${tool.toolDescription ? ` - ${tool.toolDescription}` : ""}</option>
+      `).join("");
 
       toolListBody.innerHTML = tools.map((tool) => `
         <tr>
@@ -970,6 +983,7 @@
       const result = await sendMcpMessage("tools/list", {});
       const tools = result?.result?.tools || [];
       cachedTools = tools;
+      syncToolCallSelectorFromMcpTools(tools);
       return tools;
     }
 
@@ -1057,6 +1071,32 @@
       return "string";
     }
 
+    function syncToolCallSelectorFromMcpTools(tools) {
+      if (!tools || !tools.length) {
+        if (!toolCallNameSelect.value) {
+          toolCallNameSelect.innerHTML = '<option value="">当前没有可调用工具</option>';
+        }
+        return;
+      }
+
+      const currentValue = toolCallNameSelect.value;
+      toolCallNameSelect.innerHTML = tools.map((tool) => `
+        <option value="${tool.name}">${tool.name}${tool.description ? ` - ${tool.description}` : ""}</option>
+      `).join("");
+
+      if (currentValue && tools.some((tool) => tool.name === currentValue)) {
+        toolCallNameSelect.value = currentValue;
+      }
+    }
+
+    function findSelectedTool() {
+      const selectedName = toolCallNameSelect.value;
+      if (!selectedName || !cachedTools.length) {
+        return null;
+      }
+      return cachedTools.find((tool) => tool.name === selectedName) || null;
+    }
+
     async function runAiQuestionFlow() {
       const userQuestion = userQuestionInput.value.trim();
       if (!userQuestion) {
@@ -1109,13 +1149,15 @@
         const preset = presetPayloads[text];
         if (!preset) return;
         if (text === "工具调用" && cachedTools.length > 0) {
+          const selectedTool = findSelectedTool() || cachedTools[0];
           const dynamicPreset = {
             method: "tools/call",
             params: {
-              name: cachedTools[0].name,
-              arguments: buildToolCallArguments(cachedTools[0])
+              name: selectedTool.name,
+              arguments: buildToolCallArguments(selectedTool)
             }
           };
+          toolCallNameSelect.value = selectedTool.name;
           methodSelect.value = dynamicPreset.method;
           paramsInput.value = JSON.stringify(dynamicPreset.params, null, 2);
           log("载入预设", dynamicPreset);
@@ -1202,6 +1244,17 @@
       } catch (error) {
         log("参数解析失败", error.message);
         return;
+      }
+
+       if (method === "tools/call") {
+        const selectedTool = findSelectedTool();
+        if (selectedTool) {
+          params.name = selectedTool.name;
+          if (!params.arguments || typeof params.arguments !== "object") {
+            params.arguments = buildToolCallArguments(selectedTool);
+            paramsInput.value = JSON.stringify(params, null, 2);
+          }
+        }
       }
 
       try {
@@ -1431,6 +1484,22 @@
         setAiAnswer(`工具拉取失败：${error.message}`);
         log("工具拉取失败", error.message);
       }
+    });
+
+    toolCallNameSelect.addEventListener("change", () => {
+      if ((customMethod.value.trim() || methodSelect.value) !== "tools/call") {
+        return;
+      }
+      const selectedTool = findSelectedTool();
+      if (!selectedTool) {
+        return;
+      }
+      const payload = {
+        name: selectedTool.name,
+        arguments: buildToolCallArguments(selectedTool)
+      };
+      paramsInput.value = JSON.stringify(payload, null, 2);
+      log("切换工具调用目标", payload);
     });
 
     document.getElementById("ask-ai-btn").addEventListener("click", async () => {
