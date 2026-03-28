@@ -1,14 +1,3 @@
-# ************************************************************
-# Sequel Ace SQL dump
-# 版本号： 20094
-#
-# https://sequel-ace.com/
-# https://github.com/Sequel-Ace/Sequel-Ace
-#
-# 主机: 127.0.0.1 (MySQL 8.0.42)
-# 数据库: ai_mcp_gateway_v2
-# 生成时间: 2026-03-21 07:10:55 +0000
-# ************************************************************
 
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
@@ -86,6 +75,43 @@ VALUES
 	(7,'gateway_001','gw-GPJBQHFeBWVMSGASFii5xtsmlHF5SjURFwh7C7yGRP3UtVoy',10,'2026-02-25 01:23:57',1,'2026-02-23 09:23:57','2026-02-23 09:23:57');
 
 /*!40000 ALTER TABLE `mcp_gateway_auth` ENABLE KEYS */;
+UNLOCK TABLES;
+
+
+# 转储表 mcp_ai_model_config
+# ------------------------------------------------------------
+
+DROP TABLE IF EXISTS `mcp_ai_model_config`;
+
+CREATE TABLE `mcp_ai_model_config` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `config_id` varchar(64) NOT NULL COMMENT '模型配置ID',
+  `provider` varchar(32) NOT NULL COMMENT '提供商，如 qwen/openai/deepseek',
+  `model_name` varchar(64) NOT NULL COMMENT '模型名称',
+  `display_name` varchar(128) NOT NULL COMMENT '展示名称',
+  `base_url` varchar(512) NOT NULL COMMENT '模型接口地址',
+  `api_key` varchar(256) NOT NULL COMMENT '模型密钥',
+  `status` tinyint(1) NOT NULL DEFAULT '1' COMMENT '状态：0-禁用，1-启用',
+  `is_default` tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否默认：0-否，1-是',
+  `sort_order` int NOT NULL DEFAULT '0' COMMENT '排序',
+  `remark` varchar(512) DEFAULT NULL COMMENT '备注',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_config_id` (`config_id`),
+  KEY `idx_provider_status` (`provider`,`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='AI模型配置表';
+
+LOCK TABLES `mcp_ai_model_config` WRITE;
+/*!40000 ALTER TABLE `mcp_ai_model_config` DISABLE KEYS */;
+
+INSERT INTO `mcp_ai_model_config` (`id`, `config_id`, `provider`, `model_name`, `display_name`, `base_url`, `api_key`, `status`, `is_default`, `sort_order`, `remark`, `create_time`, `update_time`)
+VALUES
+	(1,'qwen_plus_default','qwen','qwen-plus','Qwen Plus','https://dashscope.aliyuncs.com/compatible-mode/v1','sk-demo-replace-me',1,1,1,'默认 Qwen Plus 配置，请替换成真实 API Key','2026-03-28 20:00:00','2026-03-28 20:00:00'),
+	(2,'qwen_turbo_default','qwen','qwen-turbo','Qwen Turbo','https://dashscope.aliyuncs.com/compatible-mode/v1','sk-demo-replace-me',1,0,2,'默认 Qwen Turbo 配置，请替换成真实 API Key','2026-03-28 20:00:00','2026-03-28 20:00:00'),
+	(3,'qwen_max_default','qwen','qwen-max','Qwen Max','https://dashscope.aliyuncs.com/compatible-mode/v1','sk-demo-replace-me',1,0,3,'默认 Qwen Max 配置，请替换成真实 API Key','2026-03-28 20:00:00','2026-03-28 20:00:00');
+
+/*!40000 ALTER TABLE `mcp_ai_model_config` ENABLE KEYS */;
 UNLOCK TABLES;
 
 

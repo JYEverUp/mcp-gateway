@@ -8,7 +8,8 @@ public enum ResponseCode {
     METHOD_NOT_FOUND("0003", "未找到方法"),
     ENUM_NOT_FOUND("0004", "枚举不存在"),
     DB_UPDATE_FAIL("0005", "数据库更新失败"),
-    AUTH_FAIL("0006", "鉴权失败");
+    AUTH_FAIL("0006", "鉴权失败"),
+    RATE_LIMIT_FAIL("0007", "触发限流");
 
     private final String code;
     private final String info;

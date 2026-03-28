@@ -18,7 +18,9 @@ import cn.bugstack.ai.mcpgateway.domain.session.model.valobj.gateway.McpToolConf
 import cn.bugstack.ai.mcpgateway.domain.session.model.valobj.gateway.McpToolProtocolConfigVO;
 import cn.bugstack.ai.mcpgateway.domain.session.service.ISessionManagementService;
 import cn.bugstack.ai.mcpgateway.domain.session.service.ISessionMessageService;
+import cn.bugstack.ai.mcpgateway.infrastructure.dao.IMcpAiModelConfigDao;
 import cn.bugstack.ai.mcpgateway.infrastructure.dao.IMcpGatewayDao;
+import cn.bugstack.ai.mcpgateway.infrastructure.dao.po.McpAiModelConfigPO;
 import cn.bugstack.ai.mcpgateway.infrastructure.ai.SpringAiChatCompletionService;
 import cn.bugstack.ai.mcpgateway.types.enums.ResponseCode;
 import cn.bugstack.ai.mcpgateway.types.enums.GatewayEnum;
@@ -75,6 +77,7 @@ public class McpGatewayController implements IMcpGatewayService {
     private final IGatewayConfigService gatewayConfigService;
     private final IGatewayToolConfigService gatewayToolConfigService;
     private final IMcpGatewayDao mcpGatewayDao;
+    private final IMcpAiModelConfigDao mcpAiModelConfigDao;
     private final SpringAiChatCompletionService springAiChatCompletionService;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient = HttpClient.newBuilder()
@@ -90,6 +93,7 @@ public class McpGatewayController implements IMcpGatewayService {
             IGatewayConfigService gatewayConfigService,
             IGatewayToolConfigService gatewayToolConfigService,
             IMcpGatewayDao mcpGatewayDao,
+            IMcpAiModelConfigDao mcpAiModelConfigDao,
             SpringAiChatCompletionService springAiChatCompletionService,
             ObjectMapper objectMapper) {
         this.mcpSessionService = mcpSessionService;
@@ -100,6 +104,7 @@ public class McpGatewayController implements IMcpGatewayService {
         this.gatewayConfigService = gatewayConfigService;
         this.gatewayToolConfigService = gatewayToolConfigService;
         this.mcpGatewayDao = mcpGatewayDao;
+        this.mcpAiModelConfigDao = mcpAiModelConfigDao;
         this.springAiChatCompletionService = springAiChatCompletionService;
         this.objectMapper = objectMapper;
     }
@@ -252,6 +257,23 @@ public class McpGatewayController implements IMcpGatewayService {
         }
     }
 
+    @GetMapping(value = "custom-mcp/ai/model/list", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> queryAiModelConfigList() {
+        try {
+            log.info("queryAiModelConfigList invoked");
+            List<McpAiModelConfigPO> configs = mcpAiModelConfigDao.queryAllActive();
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (McpAiModelConfigPO config : configs) {
+                result.add(buildAiModelConfigView(config));
+            }
+            log.info("queryAiModelConfigList completed, count={}", result.size());
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("queryAiModelConfigList failed", e);
+            return ResponseEntity.internalServerError().body(Response.error(ResponseCode.UN_ERROR.getCode(), e.getMessage()));
+        }
+    }
+
     @PostMapping(value = "custom-mcp/chat-with-tools", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> chatWithTools(
             @RequestParam("gatewayId") String gatewayId,
@@ -271,15 +293,13 @@ public class McpGatewayController implements IMcpGatewayService {
                 return ResponseEntity.notFound().build();
             }
 
-            String aiBaseUrl = stringValue(requestBody.get("aiBaseUrl"));
-            String aiApiKey = stringValue(requestBody.get("aiApiKey"));
-            String aiModel = stringValue(requestBody.get("aiModel"));
+            AiChatConfig aiChatConfig = resolveAiChatConfig(requestBody);
             String userQuestion = stringValue(requestBody.get("userQuestion"));
             String systemPrompt = stringValue(requestBody.get("systemPrompt"));
             boolean enableMcpTools = booleanValue(requestBody.get("enableMcpTools"), true);
 
-            if (isBlank(aiBaseUrl) || isBlank(aiApiKey) || isBlank(aiModel) || isBlank(userQuestion)) {
-                return ResponseEntity.badRequest().body(Response.error(ResponseCode.ILLEGAL_PARAMETER.getCode(), "aiBaseUrl、aiApiKey、aiModel、userQuestion 不能为空"));
+            if (isBlank(userQuestion)) {
+                return ResponseEntity.badRequest().body(Response.error(ResponseCode.ILLEGAL_PARAMETER.getCode(), "userQuestion 不能为空"));
             }
 
             ArrayNode messages = objectMapper.createArrayNode();
@@ -297,9 +317,9 @@ public class McpGatewayController implements IMcpGatewayService {
             }
 
             JsonNode firstAiResponse = springAiChatCompletionService.chatCompletion(
-                    aiBaseUrl,
-                    aiApiKey,
-                    aiModel,
+                    aiChatConfig.aiBaseUrl(),
+                    aiChatConfig.aiApiKey(),
+                    aiChatConfig.aiModel(),
                     messages,
                     openAiTools.isEmpty() ? null : openAiTools);
             JsonNode firstMessage = firstAiResponse.path("choices").path(0).path("message");
@@ -334,13 +354,15 @@ public class McpGatewayController implements IMcpGatewayService {
 
             JsonNode finalAiResponse = toolCalls.isEmpty()
                     ? firstAiResponse
-                    : springAiChatCompletionService.chatCompletion(aiBaseUrl, aiApiKey, aiModel, messages, null);
+                    : springAiChatCompletionService.chatCompletion(aiChatConfig.aiBaseUrl(), aiChatConfig.aiApiKey(), aiChatConfig.aiModel(), messages, null);
             JsonNode finalMessage = finalAiResponse.path("choices").path(0).path("message");
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("gatewayId", gatewayId);
             result.put("sessionId", sessionId);
             result.put("usedMcpTools", enableMcpTools);
+            result.put("aiConfigId", aiChatConfig.aiConfigId());
+            result.put("aiModel", aiChatConfig.aiModel());
             result.put("toolCount", mcpTools.size());
             result.put("toolExecutions", toolExecutions);
             result.put("answer", extractMessageText(finalMessage));
@@ -376,15 +398,13 @@ public class McpGatewayController implements IMcpGatewayService {
                 return Flux.just(sseEvent("error", "会话不存在，请先建立连接"));
             }
 
-            String aiBaseUrl = stringValue(requestBody.get("aiBaseUrl"));
-            String aiApiKey = stringValue(requestBody.get("aiApiKey"));
-            String aiModel = stringValue(requestBody.get("aiModel"));
+            AiChatConfig aiChatConfig = resolveAiChatConfig(requestBody);
             String userQuestion = stringValue(requestBody.get("userQuestion"));
             String systemPrompt = stringValue(requestBody.get("systemPrompt"));
             boolean enableMcpTools = booleanValue(requestBody.get("enableMcpTools"), true);
 
-            if (isBlank(aiBaseUrl) || isBlank(aiApiKey) || isBlank(aiModel) || isBlank(userQuestion)) {
-                return Flux.just(sseEvent("error", "aiBaseUrl、aiApiKey、aiModel、userQuestion 不能为空"));
+            if (isBlank(userQuestion)) {
+                return Flux.just(sseEvent("error", "userQuestion 不能为空"));
             }
 
             ArrayNode messages = objectMapper.createArrayNode();
@@ -402,9 +422,9 @@ public class McpGatewayController implements IMcpGatewayService {
             }
 
             JsonNode firstAiResponse = springAiChatCompletionService.chatCompletion(
-                    aiBaseUrl,
-                    aiApiKey,
-                    aiModel,
+                    aiChatConfig.aiBaseUrl(),
+                    aiChatConfig.aiApiKey(),
+                    aiChatConfig.aiModel(),
                     messages,
                     openAiTools.isEmpty() ? null : openAiTools);
             JsonNode firstMessage = firstAiResponse.path("choices").path(0).path("message");
@@ -448,7 +468,7 @@ public class McpGatewayController implements IMcpGatewayService {
                 answerFlux = Flux.just(sseEvent("answer", answer));
             } else {
                 warmupEvents.add(sseEvent("status", "工具调用完成，开始生成最终答案"));
-                answerFlux = springAiChatCompletionService.chatCompletionStream(aiBaseUrl, aiApiKey, aiModel, messages, null)
+                answerFlux = springAiChatCompletionService.chatCompletionStream(aiChatConfig.aiBaseUrl(), aiChatConfig.aiApiKey(), aiChatConfig.aiModel(), messages, null)
                         .map(chunk -> sseEvent("answer", chunk));
             }
 
@@ -456,6 +476,8 @@ public class McpGatewayController implements IMcpGatewayService {
             meta.put("gatewayId", gatewayId);
             meta.put("sessionId", sessionId);
             meta.put("usedMcpTools", enableMcpTools);
+            meta.put("aiConfigId", aiChatConfig.aiConfigId());
+            meta.put("aiModel", aiChatConfig.aiModel());
             meta.put("toolCount", mcpTools.size());
             meta.put("toolExecutions", toolExecutions);
 
@@ -713,6 +735,41 @@ public class McpGatewayController implements IMcpGatewayService {
         return sessionMessageService.processHandlerMessage(commandEntity);
     }
 
+    private AiChatConfig resolveAiChatConfig(Map<String, Object> requestBody) {
+        String aiConfigId = stringValue(requestBody.get("aiConfigId"));
+        McpAiModelConfigPO config = isBlank(aiConfigId)
+                ? mcpAiModelConfigDao.queryDefaultConfig()
+                : mcpAiModelConfigDao.queryByConfigId(aiConfigId);
+
+        if (config != null && config.getStatus() != null && config.getStatus() == 1) {
+            if (isBlank(config.getBaseUrl()) || isBlank(config.getApiKey()) || isBlank(config.getModelName())) {
+                throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "数据库里的 AI 模型配置不完整");
+            }
+            return new AiChatConfig(config.getConfigId(), config.getBaseUrl(), config.getApiKey(), config.getModelName());
+        }
+
+        String aiBaseUrl = stringValue(requestBody.get("aiBaseUrl"));
+        String aiApiKey = stringValue(requestBody.get("aiApiKey"));
+        String aiModel = stringValue(requestBody.get("aiModel"));
+        if (isBlank(aiBaseUrl) || isBlank(aiApiKey) || isBlank(aiModel)) {
+            throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "请选择有效的 AI 模型配置");
+        }
+        return new AiChatConfig(isBlank(aiConfigId) ? "manual" : aiConfigId, aiBaseUrl, aiApiKey, aiModel);
+    }
+
+    private Map<String, Object> buildAiModelConfigView(McpAiModelConfigPO config) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("configId", config.getConfigId());
+        item.put("provider", config.getProvider());
+        item.put("modelName", config.getModelName());
+        item.put("displayName", config.getDisplayName());
+        item.put("baseUrl", config.getBaseUrl());
+        item.put("isDefault", config.getIsDefault());
+        item.put("sortOrder", config.getSortOrder());
+        item.put("remark", config.getRemark());
+        return item;
+    }
+
     private Map<String, Object> probeHttpEndpoint(String httpUrl) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("httpUrl", httpUrl);
@@ -902,6 +959,9 @@ public class McpGatewayController implements IMcpGatewayService {
         } catch (Exception e) {
             return String.valueOf(value);
         }
+    }
+
+    private record AiChatConfig(String aiConfigId, String aiBaseUrl, String aiApiKey, String aiModel) {
     }
 
     public static class ToolRegisterRequest {

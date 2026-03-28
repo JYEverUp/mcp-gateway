@@ -32,17 +32,14 @@
             <h2>模型配置</h2>
             <div class="field-grid">
                 <div class="field">
-                    <label for="ai-base-url">AI Base URL</label>
-                    <input id="ai-base-url" type="text" value="https://dashscope.aliyuncs.com/compatible-mode/v1">
-                </div>
-                <div class="field">
-                    <label for="ai-model">模型</label>
-                    <input id="ai-model" type="text" value="qwen-plus">
+                    <label for="ai-config-id">模型方案</label>
+                    <select id="ai-config-id">
+                        <option value="">请先加载模型配置</option>
+                    </select>
                 </div>
             </div>
-            <div class="field" style="margin-top: 14px;">
-                <label for="ai-api-key">AI API Key</label>
-                <input id="ai-api-key" type="text" value="sk-8cb13d42886042d18af5734bce991e86" placeholder="按需填写">
+            <div id="model-config-box" class="response-box light" style="margin-top: 14px; min-height: 90px; max-height: 90px;">
+                尚未加载模型配置
             </div>
         </section>
 
@@ -87,6 +84,7 @@
 <script>
     const common = window.McpApiCommon;
     const logId = "log-box";
+    let modelConfigs = [];
 
     function extractAnswerText(payload) {
         if (!payload) {
@@ -138,6 +136,53 @@
         common.logTo(logId, `工具响应(${result.status})`, result.data || result.text);
     }
 
+    function renderModelOptions(configs) {
+        const select = document.getElementById("ai-config-id");
+        if (!configs.length) {
+            select.innerHTML = `<option value="">暂无可用模型配置</option>`;
+            document.getElementById("model-config-box").textContent = "未查询到可用模型配置";
+            return;
+        }
+
+        select.innerHTML = configs.map((item) => {
+            const defaultTag = item.isDefault === 1 ? " (默认)" : "";
+            return `<option value="${item.configId}">${item.displayName || item.modelName}${defaultTag}</option>`;
+        }).join("");
+        renderSelectedModelConfig();
+    }
+
+    function renderSelectedModelConfig() {
+        const configId = document.getElementById("ai-config-id").value;
+        const config = modelConfigs.find((item) => item.configId === configId) || modelConfigs[0];
+        const box = document.getElementById("model-config-box");
+        if (!config) {
+            box.textContent = "未查询到可用模型配置";
+            return;
+        }
+        box.textContent = [
+            `方案: ${config.displayName || config.configId}`,
+            `提供商: ${config.provider || "-"}`,
+            `模型: ${config.modelName || "-"}`,
+            `地址: ${config.baseUrl || "-"}`,
+            `备注: ${config.remark || "-"}`
+        ].join("\n");
+    }
+
+    async function loadModelConfigs() {
+        const base = common.ensureApiKey(logId);
+        if (!base) {
+            return;
+        }
+        const url = common.buildUrl("/custom-mcp/ai/model/list", {
+            gatewayId: base.gatewayId,
+            api_key: base.apiKey
+        });
+        const result = await common.requestJson(url, { method: "GET" });
+        modelConfigs = Array.isArray(result.data) ? result.data : [];
+        renderModelOptions(modelConfigs);
+        common.logTo(logId, `模型配置响应(${result.status})`, result.data || result.text);
+    }
+
     async function askAi() {
         const base = common.ensureSession(logId);
         if (!base) {
@@ -149,9 +194,7 @@
             api_key: base.apiKey
         });
         const body = {
-            aiBaseUrl: document.getElementById("ai-base-url").value,
-            aiModel: document.getElementById("ai-model").value,
-            aiApiKey: document.getElementById("ai-api-key").value,
+            aiConfigId: document.getElementById("ai-config-id").value,
             systemPrompt: document.getElementById("system-prompt").value,
             userQuestion: document.getElementById("user-question").value,
             enableMcpTools: true
@@ -200,6 +243,7 @@
 
     document.getElementById("load-tools-btn").addEventListener("click", loadTools);
     document.getElementById("ask-btn").addEventListener("click", askAi);
+    document.getElementById("ai-config-id").addEventListener("change", renderSelectedModelConfig);
     document.getElementById("clear-answer-btn").addEventListener("click", () => {
         document.getElementById("answer-box").textContent = "";
         document.getElementById("tool-box").textContent = "";
@@ -208,6 +252,7 @@
 
     common.initBaseFields();
     common.ensureApiKey(logId);
+    loadModelConfigs();
     const tools = common.getStoredTools();
     document.getElementById("tool-box").textContent = tools.length ? JSON.stringify(tools, null, 2) : "尚未加载工具";
 </script>
