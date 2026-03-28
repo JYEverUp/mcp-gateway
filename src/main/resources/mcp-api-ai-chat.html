@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP AI 聊天联调</title>
+    <link rel="stylesheet" href="./mcp-api-shared.css">
+</head>
+<body>
+<div class="page">
+    <div class="hero">
+        <div>
+            <h1>MCP AI 聊天联调</h1>
+            <p>这个页面只保留工具拉取和 chat-with-tools 联调，方便快速验证大模型与工具路由是否打通。</p>
+            <div class="nav-links">
+                <a class="nav-button secondary" href="./mcp-api-test-mock.html">返回首页</a>
+                <a class="nav-button secondary" href="./mcp-api-connection.html">连接调试</a>
+                <a class="nav-button secondary" href="./mcp-api-gateway.html">网关管理</a>
+                <a class="nav-button secondary" href="./mcp-api-tools.html">工具管理</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid">
+        <section class="card span-6">
+            <h2>网关配置</h2>
+            <div class="field-grid">
+                <div class="field">
+                    <label for="server-url">服务地址</label>
+                    <input id="server-url" type="text">
+                </div>
+                <div class="field">
+                    <label for="gateway-id">网关标识</label>
+                    <input id="gateway-id" type="text">
+                </div>
+                <div class="field">
+                    <label for="api-key">API Key</label>
+                    <input id="api-key" type="text">
+                </div>
+                <div class="field">
+                    <label for="session-id">Session ID</label>
+                    <input id="session-id" type="text">
+                </div>
+            </div>
+        </section>
+
+        <section class="card span-6">
+            <h2>模型配置</h2>
+            <div class="field-grid">
+                <div class="field">
+                    <label for="ai-base-url">AI Base URL</label>
+                    <input id="ai-base-url" type="text" value="https://api.openai.com/v1">
+                </div>
+                <div class="field">
+                    <label for="ai-model">模型</label>
+                    <input id="ai-model" type="text" value="gpt-4o-mini">
+                </div>
+            </div>
+            <div class="field" style="margin-top: 14px;">
+                <label for="ai-api-key">AI API Key</label>
+                <input id="ai-api-key" type="text" placeholder="按需填写">
+            </div>
+        </section>
+
+        <section class="card span-7">
+            <h2>对话内容</h2>
+            <div class="field" style="margin-top: 4px;">
+                <label for="system-prompt">系统提示词</label>
+                <textarea id="system-prompt" class="small-textarea">你是一个会优先使用 MCP 工具的智能助手，请在必要时调用工具完成查询。</textarea>
+            </div>
+            <div class="field" style="margin-top: 14px;">
+                <label for="user-question">用户问题</label>
+                <textarea id="user-question" class="small-textarea">帮我查询一下 jd 在 beijing 的公司雇员信息。</textarea>
+            </div>
+            <div class="button-row" style="margin-top: 16px;">
+                <button id="load-tools-btn" class="secondary">拉取工具</button>
+                <button id="ask-btn">发送问答</button>
+                <button id="clear-answer-btn" class="warn">清空结果</button>
+            </div>
+        </section>
+
+        <section class="card span-5">
+            <h2>工具列表</h2>
+            <div id="tool-box" class="response-box light"></div>
+        </section>
+
+        <section class="card span-12">
+            <h2>回答结果</h2>
+            <div id="answer-box" class="response-box light"></div>
+        </section>
+
+        <section class="card span-12">
+            <h2>操作日志</h2>
+            <div id="log-box" class="log-box"></div>
+        </section>
+    </div>
+</div>
+
+<script src="./mcp-api-common.js"></script>
+<script>
+    const common = window.McpApiCommon;
+    const logId = "log-box";
+
+    async function loadTools() {
+        const base = common.ensureSession(logId);
+        if (!base) {
+            return;
+        }
+        const url = common.buildUrl("/custom-mcp/message/result", {
+            gatewayId: base.gatewayId,
+            sessionId: base.sessionId
+        });
+        const payload = {
+            jsonrpc: "2.0",
+            id: Date.now(),
+            method: "tools/list",
+            params: {}
+        };
+        common.logTo(logId, "拉取工具列表", payload);
+        const result = await common.requestJson(url, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "x-api-key": base.apiKey || ""
+            },
+            body: JSON.stringify(payload)
+        });
+        const tools = result.data?.result?.tools || result.data?.data?.tools || [];
+        common.setStoredTools(tools);
+        document.getElementById("tool-box").textContent = JSON.stringify(tools, null, 2);
+        common.logTo(logId, `工具响应(${result.status})`, result.data || result.text);
+    }
+
+    async function askAi() {
+        const base = common.ensureSession(logId);
+        if (!base) {
+            return;
+        }
+        const url = common.buildUrl("/custom-mcp/chat-with-tools");
+        const body = {
+            gatewayId: base.gatewayId,
+            sessionId: base.sessionId,
+            apiKey: base.apiKey,
+            baseUrl: document.getElementById("ai-base-url").value,
+            model: document.getElementById("ai-model").value,
+            apiSecretKey: document.getElementById("ai-api-key").value,
+            systemPrompt: document.getElementById("system-prompt").value,
+            message: document.getElementById("user-question").value
+        };
+        common.logTo(logId, "发送 AI 问答", body);
+        const result = await common.requestJson(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+        });
+        document.getElementById("answer-box").textContent = result.data
+            ? JSON.stringify(result.data, null, 2)
+            : (result.text || "");
+        common.logTo(logId, `问答响应(${result.status})`, result.data || result.text);
+    }
+
+    document.getElementById("load-tools-btn").addEventListener("click", loadTools);
+    document.getElementById("ask-btn").addEventListener("click", askAi);
+    document.getElementById("clear-answer-btn").addEventListener("click", () => {
+        document.getElementById("answer-box").textContent = "";
+        document.getElementById("tool-box").textContent = "";
+        document.getElementById("log-box").textContent = "";
+    });
+
+    common.initBaseFields();
+    const tools = common.getStoredTools();
+    document.getElementById("tool-box").textContent = tools.length ? JSON.stringify(tools, null, 2) : "尚未加载工具";
+</script>
+</body>
+</html>

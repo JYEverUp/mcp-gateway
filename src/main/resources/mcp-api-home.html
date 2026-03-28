@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP 调试页面导航</title>
+    <link rel="stylesheet" href="./mcp-api-shared.css">
+</head>
+<body>
+<div class="page">
+    <div class="hero">
+        <div>
+            <h1>MCP 调试页面导航</h1>
+            <p>原来的调试页面内容太长，我已经按职责拆成几个独立页面。你可以从这里进入不同的功能页，分别做连接调试、网关管理、工具管理和 AI 联调。</p>
+        </div>
+    </div>
+
+    <div class="cards">
+        <a class="menu-card" href="./mcp-api-connection.html">
+            <h3>连接调试</h3>
+            <p>建立会话、健康检查、发送 initialize/tools/list/resources/list/tools/call。</p>
+        </a>
+        <a class="menu-card" href="./mcp-api-gateway.html">
+            <h3>网关管理</h3>
+            <p>处理网关注册、详情查询、列表查询和鉴权更新。</p>
+        </a>
+        <a class="menu-card" href="./mcp-api-tools.html">
+            <h3>工具管理</h3>
+            <p>处理工具注册、工具列表和协议更新，默认对齐当前 SQL 工具配置。</p>
+        </a>
+        <a class="menu-card" href="./mcp-api-ai-chat.html">
+            <h3>AI 聊天</h3>
+            <p>拉取工具并调用 chat-with-tools，单独验证模型联调链路。</p>
+        </a>
+        <a class="menu-card" href="./mcp-api-test-mock.html">
+            <h3>旧版整合页</h3>
+            <p>保留原始长页面作为兼容入口，后续你要的话我可以继续把它也收口成这个导航页。</p>
+        </a>
+    </div>
+</div>
+</body>
+</html>

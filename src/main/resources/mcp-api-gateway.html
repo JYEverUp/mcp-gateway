@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP 网关管理</title>
+    <link rel="stylesheet" href="./mcp-api-shared.css">
+</head>
+<body>
+<div class="page">
+    <div class="hero">
+        <div>
+            <h1>MCP 网关管理</h1>
+            <p>这里集中处理网关注册、详情查询、列表查询和鉴权更新，便于单独验证管理接口，不和消息调试混在一起。</p>
+            <div class="nav-links">
+                <a class="nav-button secondary" href="./mcp-api-test-mock.html">返回首页</a>
+                <a class="nav-button secondary" href="./mcp-api-connection.html">连接调试</a>
+                <a class="nav-button secondary" href="./mcp-api-tools.html">工具管理</a>
+                <a class="nav-button secondary" href="./mcp-api-ai-chat.html">AI 聊天</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid">
+        <section class="card span-7">
+            <h2>基础配置</h2>
+            <div class="field-grid">
+                <div class="field">
+                    <label for="server-url">服务地址</label>
+                    <input id="server-url" type="text">
+                </div>
+                <div class="field">
+                    <label for="gateway-id">网关标识</label>
+                    <input id="gateway-id" type="text">
+                </div>
+                <div class="field">
+                    <label for="api-key">API Key</label>
+                    <input id="api-key" type="text">
+                </div>
+                <div class="field">
+                    <label for="gateway-name">网关名称</label>
+                    <input id="gateway-name" type="text" value="MCP Gateway Demo">
+                </div>
+            </div>
+            <div class="field" style="margin-top: 14px;">
+                <label for="gateway-instruction">网关说明</label>
+                <textarea id="gateway-instruction" class="small-textarea">这是一个用于联调 MCP Gateway 的演示网关。</textarea>
+            </div>
+            <div class="field-grid" style="margin-top: 14px;">
+                <div class="field">
+                    <label for="auth-type">鉴权类型</label>
+                    <select id="auth-type">
+                        <option value="apikey">apikey</option>
+                        <option value="none">none</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="auth-value">鉴权值</label>
+                    <input id="auth-value" type="text" value="test-api-key">
+                </div>
+            </div>
+            <div class="button-row" style="margin-top: 16px;">
+                <button id="register-btn">注册网关</button>
+                <button id="detail-btn" class="secondary">查询详情</button>
+                <button id="list-btn" class="secondary">查询列表</button>
+                <button id="auth-btn" class="secondary">更新鉴权</button>
+                <button id="clear-log-btn" class="warn">清空日志</button>
+            </div>
+        </section>
+
+        <section class="card span-5">
+            <h2>最近响应</h2>
+            <div id="response-box" class="response-box light"></div>
+        </section>
+
+        <section class="card span-12">
+            <h2>操作日志</h2>
+            <div id="log-box" class="log-box"></div>
+        </section>
+    </div>
+</div>
+
+<script src="./mcp-api-common.js"></script>
+<script>
+    const common = window.McpApiCommon;
+    const logId = "log-box";
+
+    async function callJson(url, method, body) {
+        common.logTo(logId, `${method} ${url}`, body || "");
+        const result = await common.requestJson(url, {
+            method,
+            headers: { "Content-Type": "application/json" },
+            body: body ? JSON.stringify(body) : undefined
+        });
+        document.getElementById("response-box").textContent = result.data
+            ? JSON.stringify(result.data, null, 2)
+            : (result.text || "");
+        common.logTo(logId, `响应(${result.status})`, result.data || result.text);
+    }
+
+    function gatewayPayload() {
+        const base = common.readBaseFields();
+        return {
+            gatewayId: base.gatewayId,
+            gatewayName: document.getElementById("gateway-name").value,
+            apiKey: base.apiKey,
+            instructions: document.getElementById("gateway-instruction").value
+        };
+    }
+
+    async function registerGateway() {
+        await callJson(common.buildUrl("/custom-mcp/gateway/register"), "POST", gatewayPayload());
+    }
+
+    async function gatewayDetail() {
+        const base = common.readBaseFields();
+        await callJson(common.buildUrl("/custom-mcp/gateway/detail", { gatewayId: base.gatewayId }), "GET");
+    }
+
+    async function gatewayList() {
+        await callJson(common.buildUrl("/custom-mcp/gateway/list"), "GET");
+    }
+
+    async function updateAuth() {
+        const base = common.readBaseFields();
+        await callJson(common.buildUrl("/custom-mcp/gateway/auth/update"), "POST", {
+            gatewayId: base.gatewayId,
+            authType: document.getElementById("auth-type").value,
+            authValue: document.getElementById("auth-value").value
+        });
+    }
+
+    document.getElementById("register-btn").addEventListener("click", registerGateway);
+    document.getElementById("detail-btn").addEventListener("click", gatewayDetail);
+    document.getElementById("list-btn").addEventListener("click", gatewayList);
+    document.getElementById("auth-btn").addEventListener("click", updateAuth);
+    document.getElementById("clear-log-btn").addEventListener("click", () => {
+        document.getElementById(logId).textContent = "";
+        document.getElementById("response-box").textContent = "";
+    });
+
+    common.initBaseFields();
+</script>
+</body>
+</html>

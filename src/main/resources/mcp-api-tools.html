@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP 工具管理</title>
+    <link rel="stylesheet" href="./mcp-api-shared.css">
+</head>
+<body>
+<div class="page">
+    <div class="hero">
+        <div>
+            <h1>MCP 工具管理</h1>
+            <p>这个页面拆出来后，工具注册、工具列表和协议更新会更清楚，也更方便对照数据库里的工具协议配置做联调。</p>
+            <div class="nav-links">
+                <a class="nav-button secondary" href="./mcp-api-test-mock.html">返回首页</a>
+                <a class="nav-button secondary" href="./mcp-api-connection.html">连接调试</a>
+                <a class="nav-button secondary" href="./mcp-api-gateway.html">网关管理</a>
+                <a class="nav-button secondary" href="./mcp-api-ai-chat.html">AI 聊天</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid">
+        <section class="card span-7">
+            <h2>工具配置</h2>
+            <div class="field-grid">
+                <div class="field">
+                    <label for="server-url">服务地址</label>
+                    <input id="server-url" type="text">
+                </div>
+                <div class="field">
+                    <label for="gateway-id">网关标识</label>
+                    <input id="gateway-id" type="text">
+                </div>
+                <div class="field">
+                    <label for="api-key">API Key</label>
+                    <input id="api-key" type="text">
+                </div>
+                <div class="field">
+                    <label for="tool-name">工具名称</label>
+                    <input id="tool-name" type="text" value="JavaSDKMCPClient_getCompanyEmployee">
+                </div>
+            </div>
+            <div class="field" style="margin-top: 14px;">
+                <label for="tool-desc">工具说明</label>
+                <textarea id="tool-desc" class="small-textarea">获取公司雇员信息</textarea>
+            </div>
+            <div class="field-grid" style="margin-top: 14px;">
+                <div class="field">
+                    <label for="protocol-id">协议 ID</label>
+                    <input id="protocol-id" type="number" value="83666188">
+                </div>
+                <div class="field">
+                    <label for="http-method">HTTP Method</label>
+                    <select id="http-method">
+                        <option value="POST">POST</option>
+                        <option value="GET">GET</option>
+                    </select>
+                </div>
+            </div>
+            <div class="field" style="margin-top: 14px;">
+                <label for="http-url">HTTP URL</label>
+                <input id="http-url" type="text" value="http://localhost:8701/api/v1/mcp/get_company_employee">
+            </div>
+            <div class="field" style="margin-top: 14px;">
+                <label for="mapping-body">请求映射 JSON</label>
+                <textarea id="mapping-body">{
+  "requestMappingType": "BODY",
+  "requestMapping": "$.arguments.xxxRequest01",
+  "responseMappingType": "BODY",
+  "responseMapping": "$"
+}</textarea>
+            </div>
+            <div class="button-row" style="margin-top: 16px;">
+                <button id="register-tool-btn">注册工具</button>
+                <button id="list-tool-btn" class="secondary">工具列表</button>
+                <button id="protocol-btn" class="secondary">更新协议</button>
+                <button id="clear-log-btn" class="warn">清空日志</button>
+            </div>
+        </section>
+
+        <section class="card span-5">
+            <h2>最近响应</h2>
+            <div id="response-box" class="response-box light"></div>
+        </section>
+
+        <section class="card span-12">
+            <h2>操作日志</h2>
+            <div id="log-box" class="log-box"></div>
+        </section>
+    </div>
+</div>
+
+<script src="./mcp-api-common.js"></script>
+<script>
+    const common = window.McpApiCommon;
+    const logId = "log-box";
+
+    async function callJson(url, method, body) {
+        common.logTo(logId, `${method} ${url}`, body || "");
+        const result = await common.requestJson(url, {
+            method,
+            headers: { "Content-Type": "application/json" },
+            body: body ? JSON.stringify(body) : undefined
+        });
+        document.getElementById("response-box").textContent = result.data
+            ? JSON.stringify(result.data, null, 2)
+            : (result.text || "");
+        common.logTo(logId, `响应(${result.status})`, result.data || result.text);
+        const tools = result.data?.data || result.data?.result?.tools;
+        if (Array.isArray(tools)) {
+            common.setStoredTools(tools);
+        }
+    }
+
+    function toolRegisterPayload() {
+        const base = common.readBaseFields();
+        return {
+            gatewayId: base.gatewayId,
+            toolName: document.getElementById("tool-name").value,
+            toolDesc: document.getElementById("tool-desc").value
+        };
+    }
+
+    function protocolPayload() {
+        const base = common.readBaseFields();
+        return {
+            gatewayId: base.gatewayId,
+            toolName: document.getElementById("tool-name").value,
+            protocolId: Number(document.getElementById("protocol-id").value),
+            httpUrl: document.getElementById("http-url").value,
+            httpMethod: document.getElementById("http-method").value,
+            mappingConfig: common.parseJsonSafe(document.getElementById("mapping-body").value) || {}
+        };
+    }
+
+    document.getElementById("register-tool-btn").addEventListener("click", async () => {
+        await callJson(common.buildUrl("/custom-mcp/tool/register"), "POST", toolRegisterPayload());
+    });
+
+    document.getElementById("list-tool-btn").addEventListener("click", async () => {
+        const base = common.readBaseFields();
+        await callJson(common.buildUrl("/custom-mcp/tool/list", { gatewayId: base.gatewayId }), "GET");
+    });
+
+    document.getElementById("protocol-btn").addEventListener("click", async () => {
+        await callJson(common.buildUrl("/custom-mcp/tool/protocol/update"), "POST", protocolPayload());
+    });
+
+    document.getElementById("clear-log-btn").addEventListener("click", () => {
+        document.getElementById(logId).textContent = "";
+        document.getElementById("response-box").textContent = "";
+    });
+
+    common.initBaseFields();
+</script>
+</body>
+</html>

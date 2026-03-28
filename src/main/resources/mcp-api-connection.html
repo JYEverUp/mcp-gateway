@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP 连接与消息调试</title>
+    <link rel="stylesheet" href="./mcp-api-shared.css">
+</head>
+<body>
+<div class="page">
+    <div class="hero">
+        <div>
+            <h1>MCP 连接与消息调试</h1>
+            <p>这个页面专门用来做会话建立、健康检查和 JSON-RPC 消息发送，适合联调 initialize、tools/list、resources/list、tools/call 这条链路。</p>
+            <div class="nav-links">
+                <a class="nav-button secondary" href="./mcp-api-test-mock.html">返回首页</a>
+                <a class="nav-button secondary" href="./mcp-api-gateway.html">网关管理</a>
+                <a class="nav-button secondary" href="./mcp-api-tools.html">工具管理</a>
+                <a class="nav-button secondary" href="./mcp-api-ai-chat.html">AI 聊天</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid">
+        <section class="card span-7">
+            <h2>基础配置</h2>
+            <div class="field-grid">
+                <div class="field">
+                    <label for="server-url">服务地址</label>
+                    <input id="server-url" type="text">
+                </div>
+                <div class="field">
+                    <label for="gateway-id">网关标识</label>
+                    <input id="gateway-id" type="text">
+                </div>
+                <div class="field">
+                    <label for="api-key">API Key</label>
+                    <input id="api-key" type="text">
+                </div>
+                <div class="field">
+                    <label for="session-id">Session ID</label>
+                    <input id="session-id" type="text" placeholder="建立连接后自动回填">
+                </div>
+            </div>
+            <div class="button-row" style="margin-top: 16px;">
+                <button id="connect-btn">建立连接</button>
+                <button id="disconnect-btn" class="secondary">断开连接</button>
+                <button id="health-btn" class="secondary">健康检查</button>
+                <button id="clear-log-btn" class="warn">清空日志</button>
+            </div>
+        </section>
+
+        <section class="card span-5">
+            <div id="status-box" class="status">
+                <strong>连接状态</strong>
+                <div>尚未建立连接</div>
+            </div>
+            <div id="session-box" class="session-box" style="margin-top: 14px;">
+                <strong>会话信息</strong>
+                <div>Session: -</div>
+            </div>
+        </section>
+
+        <section class="card span-7">
+            <h2>消息发送</h2>
+            <div class="field-grid">
+                <div class="field">
+                    <label for="message-method">预设消息</label>
+                    <select id="message-method">
+                        <option value="initialize">initialize</option>
+                        <option value="tools/list">tools/list</option>
+                        <option value="resources/list">resources/list</option>
+                        <option value="tools/call">tools/call</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="tool-call-name">工具调用目标</label>
+                    <select id="tool-call-name">
+                        <option value="">请先拉取工具列表</option>
+                    </select>
+                </div>
+            </div>
+            <div class="field" style="margin-top: 14px;">
+                <label for="message-payload">消息体</label>
+                <textarea id="message-payload"></textarea>
+            </div>
+            <div class="button-row" style="margin-top: 16px;">
+                <button id="load-preset-btn" class="secondary">载入预设</button>
+                <button id="send-message-btn">发送消息</button>
+                <button id="load-tools-btn" class="secondary">拉取工具列表</button>
+            </div>
+        </section>
+
+        <section class="card span-5">
+            <h2>最近响应</h2>
+            <div id="response-box" class="response-box light"></div>
+        </section>
+
+        <section class="card span-12">
+            <h2>操作日志</h2>
+            <div id="log-box" class="log-box"></div>
+        </section>
+    </div>
+</div>
+
+<script src="./mcp-api-common.js"></script>
+<script>
+    const common = window.McpApiCommon;
+    const logId = "log-box";
+
+    function buildPreset(method) {
+        if (method === "initialize") {
+            return {
+                jsonrpc: "2.0",
+                id: Date.now(),
+                method: "initialize",
+                params: {
+                    protocolVersion: "2024-11-05",
+                    capabilities: {},
+                    clientInfo: {
+                        name: "mcp-api-test-mock",
+                        version: "1.0.0"
+                    }
+                }
+            };
+        }
+
+        if (method === "tools/list") {
+            return { jsonrpc: "2.0", id: Date.now(), method: "tools/list", params: {} };
+        }
+
+        if (method === "resources/list") {
+            return { jsonrpc: "2.0", id: Date.now(), method: "resources/list", params: {} };
+        }
+
+        const selectedTool = document.getElementById("tool-call-name").value;
+        if (selectedTool === "JavaSDKMCPClient_getCompanyEmployee") {
+            return {
+                jsonrpc: "2.0",
+                id: Date.now(),
+                method: "tools/call",
+                params: {
+                    name: selectedTool,
+                    arguments: {
+                        xxxRequest01: {
+                            city: "beijing",
+                            company: {
+                                name: "jd",
+                                type: "internet"
+                            }
+                        }
+                    }
+                }
+            };
+        }
+
+        return {
+            jsonrpc: "2.0",
+            id: Date.now(),
+            method: "tools/call",
+            params: {
+                name: selectedTool || "",
+                arguments: {
+                    payload: {
+                        city: "shanghai"
+                    }
+                }
+            }
+        };
+    }
+
+    function renderToolOptions(tools) {
+        const select = document.getElementById("tool-call-name");
+        const normalized = (tools || []).map((item) => item.name ? item : { name: item.toolName || "" }).filter((item) => item.name);
+        select.innerHTML = normalized.length
+            ? normalized.map((item) => `<option value="${item.name}">${item.name}</option>`).join("")
+            : `<option value="">请先拉取工具列表</option>`;
+    }
+
+    async function connectSession() {
+        const base = common.readBaseFields();
+        const url = common.buildUrl("/custom-mcp/session", {
+            gatewayId: base.gatewayId,
+            apiKey: base.apiKey
+        });
+        common.logTo(logId, "发起连接", url);
+        const result = await common.requestJson(url, { method: "GET" });
+        const endpoint = result.data?.data?.endpoint || result.data?.data || "";
+        common.updateSessionBox("session-box", base, endpoint);
+        common.updateStatus("status-box", "连接状态", [
+            `HTTP: ${result.status}`,
+            `成功: ${result.ok}`,
+            `Endpoint: ${endpoint || "-"}`
+        ]);
+        common.logTo(logId, `连接响应(${result.status})`, result.data || result.text);
+    }
+
+    async function disconnectSession() {
+        const base = common.ensureSession(logId);
+        if (!base) {
+            return;
+        }
+        const url = common.buildUrl("/custom-mcp/session", {
+            gatewayId: base.gatewayId,
+            sessionId: base.sessionId
+        });
+        const result = await common.requestJson(url, { method: "DELETE" });
+        common.updateStatus("status-box", "连接状态", [
+            `HTTP: ${result.status}`,
+            `成功: ${result.ok}`,
+            "会话已请求断开"
+        ]);
+        common.logTo(logId, `断开响应(${result.status})`, result.data || result.text);
+    }
+
+    async function healthCheck() {
+        const url = common.buildUrl("/api/health");
+        const result = await common.requestJson(url, { method: "GET" });
+        common.updateStatus("status-box", "健康检查", [
+            `HTTP: ${result.status}`,
+            `响应: ${(result.data && JSON.stringify(result.data)) || result.text || "-"}`
+        ]);
+        common.logTo(logId, `健康检查(${result.status})`, result.data || result.text);
+    }
+
+    async function sendMessage(payload) {
+        const base = common.ensureSession(logId);
+        if (!base) {
+            return;
+        }
+        const url = common.buildUrl("/custom-mcp/message/result", {
+            gatewayId: base.gatewayId,
+            sessionId: base.sessionId
+        });
+        common.logTo(logId, "发送 MCP 消息", payload);
+        const result = await common.requestJson(url, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "x-api-key": base.apiKey || ""
+            },
+            body: JSON.stringify(payload)
+        });
+        document.getElementById("response-box").textContent = result.data
+            ? JSON.stringify(result.data, null, 2)
+            : (result.text || "");
+        common.logTo(logId, `MCP 响应(${result.status})`, result.data || result.text);
+
+        const tools = result.data?.result?.tools || result.data?.data?.tools || [];
+        if (Array.isArray(tools) && tools.length) {
+            common.setStoredTools(tools);
+            renderToolOptions(tools);
+        }
+    }
+
+    async function loadTools() {
+        const payload = buildPreset("tools/list");
+        await sendMessage(payload);
+    }
+
+    document.getElementById("connect-btn").addEventListener("click", connectSession);
+    document.getElementById("disconnect-btn").addEventListener("click", disconnectSession);
+    document.getElementById("health-btn").addEventListener("click", healthCheck);
+    document.getElementById("clear-log-btn").addEventListener("click", () => {
+        document.getElementById(logId).textContent = "";
+        document.getElementById("response-box").textContent = "";
+    });
+
+    document.getElementById("load-preset-btn").addEventListener("click", () => {
+        const method = document.getElementById("message-method").value;
+        const preset = buildPreset(method);
+        document.getElementById("message-payload").value = JSON.stringify(preset, null, 2);
+        common.logTo(logId, "载入预设", preset);
+    });
+
+    document.getElementById("send-message-btn").addEventListener("click", async () => {
+        const text = document.getElementById("message-payload").value;
+        const payload = common.parseJsonSafe(text);
+        if (!payload) {
+            common.logTo(logId, "消息体不是合法 JSON");
+            return;
+        }
+        await sendMessage(payload);
+    });
+
+    document.getElementById("load-tools-btn").addEventListener("click", loadTools);
+    document.getElementById("message-method").addEventListener("change", () => {
+        const method = document.getElementById("message-method").value;
+        document.getElementById("message-payload").value = JSON.stringify(buildPreset(method), null, 2);
+    });
+    document.getElementById("tool-call-name").addEventListener("change", () => {
+        if (document.getElementById("message-method").value === "tools/call") {
+            document.getElementById("message-payload").value = JSON.stringify(buildPreset("tools/call"), null, 2);
+        }
+    });
+
+    common.initBaseFields();
+    renderToolOptions(common.getStoredTools());
+    document.getElementById("message-payload").value = JSON.stringify(buildPreset("initialize"), null, 2);
+</script>
+</body>
+</html>
