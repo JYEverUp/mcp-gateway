@@ -134,16 +134,18 @@
         if (!base) {
             return;
         }
-        const url = common.buildUrl("/custom-mcp/chat-with-tools");
-        const body = {
+        const url = common.buildUrl("/custom-mcp/chat-with-tools", {
             gatewayId: base.gatewayId,
             sessionId: base.sessionId,
-            apiKey: base.apiKey,
-            baseUrl: document.getElementById("ai-base-url").value,
-            model: document.getElementById("ai-model").value,
-            apiSecretKey: document.getElementById("ai-api-key").value,
+            api_key: base.apiKey
+        });
+        const body = {
+            aiBaseUrl: document.getElementById("ai-base-url").value,
+            aiModel: document.getElementById("ai-model").value,
+            aiApiKey: document.getElementById("ai-api-key").value,
             systemPrompt: document.getElementById("system-prompt").value,
-            message: document.getElementById("user-question").value
+            userQuestion: document.getElementById("user-question").value,
+            enableMcpTools: true
         };
         common.logTo(logId, "发送 AI 问答", body);
         const result = await common.requestJson(url, {
