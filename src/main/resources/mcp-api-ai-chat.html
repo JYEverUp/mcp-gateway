@@ -81,7 +81,7 @@
 
         <section class="card span-5">
             <h2>工具列表</h2>
-            <div id="tool-box" class="response-box light"></div>
+            <div id="tool-box" class="response-box light" style="min-height: 260px; max-height: 260px;"></div>
         </section>
 
         <section class="card span-12">
@@ -100,6 +100,28 @@
 <script>
     const common = window.McpApiCommon;
     const logId = "log-box";
+
+    function extractAnswerText(payload) {
+        if (!payload) {
+            return "";
+        }
+
+        const candidates = [
+            payload.answer,
+            payload.data?.answer,
+            payload.data?.content,
+            payload.data?.message,
+            payload.result?.answer,
+            payload.result?.content,
+            payload.result?.message,
+            payload.choices?.[0]?.message?.content,
+            payload.data?.choices?.[0]?.message?.content,
+            payload.result?.choices?.[0]?.message?.content
+        ];
+
+        const matched = candidates.find((item) => typeof item === "string" && item.trim());
+        return matched || JSON.stringify(payload, null, 2);
+    }
 
     async function loadTools() {
         const base = common.ensureSession(logId);
@@ -154,7 +176,7 @@
             body: JSON.stringify(body)
         });
         document.getElementById("answer-box").textContent = result.data
-            ? JSON.stringify(result.data, null, 2)
+            ? extractAnswerText(result.data)
             : (result.text || "");
         common.logTo(logId, `问答响应(${result.status})`, result.data || result.text);
     }
