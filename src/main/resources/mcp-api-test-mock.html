@@ -821,10 +821,14 @@
       "工具调用": {
         method: "tools/call",
         params: {
-          name: "echo_payload",
+          name: "JavaSDKMCPClient_getCompanyEmployee",
           arguments: {
-            payload: {
-              city: "shanghai"
+            xxxRequest01: {
+              city: "beijing",
+              company: {
+                name: "jd",
+                type: "internet"
+              }
             }
           }
         }
@@ -1007,6 +1011,52 @@
       return "";
     }
 
+    function buildToolCallArguments(tool) {
+      if (!tool || !tool.inputSchema || !tool.inputSchema.properties) {
+        return {};
+      }
+
+      if (tool.name === "JavaSDKMCPClient_getCompanyEmployee") {
+        return {
+          xxxRequest01: {
+            city: "beijing",
+            company: {
+              name: "jd",
+              type: "internet"
+            }
+          }
+        };
+      }
+
+      const args = {};
+      Object.entries(tool.inputSchema.properties).forEach(([key, value]) => {
+        args[key] = buildExampleValue(value, key);
+      });
+      return args;
+    }
+
+    function buildExampleValue(schema, keyName = "") {
+      if (!schema || typeof schema !== "object") {
+        return "";
+      }
+
+      if (schema.type === "object") {
+        const obj = {};
+        Object.entries(schema.properties || {}).forEach(([key, value]) => {
+          obj[key] = buildExampleValue(value, key);
+        });
+        return obj;
+      }
+
+      if (schema.type === "array") return [];
+      if (schema.type === "boolean") return false;
+      if (schema.type === "number" || schema.type === "integer") return 1;
+      if (keyName.toLowerCase().includes("city")) return "beijing";
+      if (keyName.toLowerCase().includes("name")) return "demo";
+      if (keyName.toLowerCase().includes("type")) return "default";
+      return "string";
+    }
+
     async function runAiQuestionFlow() {
       const userQuestion = userQuestionInput.value.trim();
       if (!userQuestion) {
@@ -1058,6 +1108,19 @@
         const text = button.textContent.trim();
         const preset = presetPayloads[text];
         if (!preset) return;
+        if (text === "工具调用" && cachedTools.length > 0) {
+          const dynamicPreset = {
+            method: "tools/call",
+            params: {
+              name: cachedTools[0].name,
+              arguments: buildToolCallArguments(cachedTools[0])
+            }
+          };
+          methodSelect.value = dynamicPreset.method;
+          paramsInput.value = JSON.stringify(dynamicPreset.params, null, 2);
+          log("载入预设", dynamicPreset);
+          return;
+        }
         methodSelect.value = preset.method;
         paramsInput.value = JSON.stringify(preset.params, null, 2);
         log("载入预设", preset);
